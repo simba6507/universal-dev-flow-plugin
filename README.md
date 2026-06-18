@@ -82,7 +82,7 @@ udflow> [實作] implementer 依計劃修改上述兩檔（最小變更)。
 - `skills/universal-dev-flow/` — 自動觸發的編排器(含 `references/`)。
 - `skills/run/` — 手動入口:`/udflow:run <task>`。
 - `agents/` — 9 個 subagent:`implementer`(可寫)+ 7 個唯讀審查員 + `gatekeeper`。其中 `security-reviewer` 與 `gatekeeper` 跑 `opus`,其餘沿用當前 session 模型。
-- `hooks/` — `plan-gate.js`(PreToolUse:plan mode 期間阻擋寫入)與 `load-failure-memory.js`(SessionStart:注入 FAILURE_MEMORY)。兩者都是 Node 腳本,所以在 Windows PowerShell、macOS、Linux 上行為一致。
+- `hooks/` — `plan-gate.js`(PreToolUse:plan mode 期間阻擋寫入,但放行 Claude Code 自己的 plan 檔 `~/.claude/plans/`,不干擾原生 plan 工作流)與 `load-failure-memory.js`(SessionStart:注入 FAILURE_MEMORY)。兩者都是 Node 腳本,所以在 Windows PowerShell、macOS、Linux 上行為一致。
 - `.mcp.json` — 預設為空(零 context 成本)。`mcp.example.json` 是可複製套用的範本。
 
 ### 9 個 subagent 一覽
@@ -103,7 +103,7 @@ udflow> [實作] implementer 依計劃修改上述兩檔（最小變更)。
 
 ## 計劃閘門(動手前先核准)
 
-步驟 1–2 在 plan mode 進行,計劃以 ExitPlanMode 呈現,**核准後才會執行 `implementer`**。PreToolUse hook 會在 plan mode 期間強制唯讀。
+步驟 1–2 在 plan mode 進行,計劃以 ExitPlanMode 呈現,**核准後才會執行 `implementer`**。PreToolUse hook 會在 plan mode 期間強制唯讀(僅放行 Claude Code 自己的 plan 檔,以免擋到原生 plan 工作流)。
 
 若你希望**每個 session 預設都從 plan mode 開始**,請在自己的 `~/.claude/settings.json` 或專案的 `.claude/settings.json` 設定預設模式(本 plugin 不會強制設定)。
 

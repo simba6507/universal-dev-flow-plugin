@@ -12,7 +12,15 @@ process.stdin.on("end", () => {
     const tool = input.tool_name || "";
     const mode = input.permission_mode || "";
     const blocked = tool === "Write" || tool === "Edit" || tool === "MultiEdit";
-    if (mode === "plan" && blocked) {
+
+    // Exempt Claude Code's own plan files (~/.claude/plans/...). Plan mode itself
+    // writes the plan to that path, so blocking it would break the native plan flow.
+    const ti = input.tool_input || {};
+    const targetPath = ti.file_path || ti.path || ti.notebook_path || "";
+    const normalized = String(targetPath).replace(/\\/g, "/").toLowerCase();
+    const isPlanFile = normalized.indexOf("/.claude/plans/") !== -1;
+
+    if (mode === "plan" && blocked && !isPlanFile) {
       const out = {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
