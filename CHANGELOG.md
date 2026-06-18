@@ -3,6 +3,19 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0]
+
+### Changed
+- **Failure memory redesigned into three stages.** The SessionStart hook now injects a compact **digest** (entry title + prevention rule + tags, newest first, capped) instead of dumping the whole file with a blind ~12000-char truncation. Relevant full entries are retrieved during planning by affected files/area/language/tags, and file size is kept down by consolidation (merge duplicates, fold recurrences, prune obsolete) rather than truncation.
+- Truncation is now entry-aware (never cuts mid-entry) and only a safety net; non-template files fall back to an entry-aware excerpt of the newest content.
+
+### Added
+- `Tags` field in the failure-memory entry template (and the sample), used by the digest and targeted retrieval.
+
+### Docs
+- Moved the "Good to know" disclosures to the top of the README (before Quick start) so risks are seen first, and reworded the plan-gate / failure-memory bullets to make clear the hooks are invisible during normal work.
+- Rewrote the README "Failure memory" section to describe the three-stage read/recall/consolidation flow.
+
 ## [0.3.0]
 
 ### Changed

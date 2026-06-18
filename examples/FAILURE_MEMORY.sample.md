@@ -15,6 +15,7 @@ Reusable failure lessons. Newest first. Keep entries concise and prevention-orie
 - **Root cause**: why it actually failed.
 - **Fix applied**: what made the repaired path valid.
 - **Prevention rule**: the reusable rule that avoids this next time.
+- **Tags**: language / area / error-type (used by the startup digest and targeted retrieval).
 - **Scope**: project-specific or cross-project.
 - **Recurrence**: note and increment if this lesson recurs (e.g. "seen again 2026-06-19").
 
@@ -28,6 +29,7 @@ Reusable failure lessons. Newest first. Keep entries concise and prevention-orie
 - **Root cause**: `jsdom` was relied on implicitly but never declared in `devDependencies`, so a clean `npm ci` did not install it.
 - **Fix applied**: added `jsdom` to `devDependencies` and pinned it; `npm ci && npm test` then passed.
 - **Prevention rule**: any test-only runtime dependency must be an explicit `devDependency`; verify with a clean `npm ci`, not an incremental install.
+- **Tags**: node / dependencies / ci-test-failure.
 - **Scope**: project-specific.
 - **Recurrence**: first occurrence.
 
@@ -37,5 +39,6 @@ Reusable failure lessons. Newest first. Keep entries concise and prevention-orie
 - **Root cause**: path was assembled with a hardcoded POSIX separator instead of the platform path API.
 - **Fix applied**: switched to the platform path join (`path.join`) so separators are correct on every OS.
 - **Prevention rule**: never hardcode path separators; always join paths via the platform/path API. Applies to any cross-platform tooling.
+- **Tags**: cross-language / build-tooling / cross-platform-path.
 - **Scope**: cross-project.
 - **Recurrence**: seen again 2026-06-15 (different repo) — confirms the cross-project prevention rule.

@@ -41,8 +41,8 @@ Professional temperament: calm under uncertainty, pragmatic, disciplined, low-eg
 - Follow the Detect → Use → Else-Disclose protocol for any optional external capability.
 
 ## Failure memory
-- Before non-trivial implementation, review recent relevant entries in `ai/FAILURE_MEMORY.md` when it exists; otherwise `~/.claude/FAILURE_MEMORY.md`.
-- When writing a failure memory entry, reuse the existing template in the target file. If the target file contains an Entry Template section, follow that structure exactly. Do not invent a new failure memory structure if one already exists.
+- Before non-trivial implementation, retrieve the entries relevant to your change's files/area/language/error-type (filter by `Tags`) from `ai/FAILURE_MEMORY.md` when it exists, otherwise `~/.claude/FAILURE_MEMORY.md`. The startup digest is only an index; read the relevant full entries.
+- When writing a failure memory entry, reuse the existing template in the target file. If the target file contains an Entry Template section, follow that structure exactly (including the `Tags` field). Do not invent a new failure memory structure if one already exists.
 
 ## Non-negotiables
 - Do not say "done" because code compiles.

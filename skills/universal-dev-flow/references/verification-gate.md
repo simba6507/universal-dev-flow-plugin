@@ -53,10 +53,12 @@ Do not perform broad encoding conversion unless the root cause and interoperabil
 
 ## Failure Memory
 
-Read before non-trivial implementation:
+Read before non-trivial implementation. The SessionStart hook injects only a condensed **digest** (entry titles + prevention rules + tags, newest first) as an index — do not treat it as the full record:
 
 1. `ai/FAILURE_MEMORY.md` when it exists.
 2. `~/.claude/FAILURE_MEMORY.md` otherwise, including consolidated groups.
+
+During planning, perform **targeted retrieval**: search the failure-memory file for entries relevant to this task's affected files, area, language, and error type (use the entry `Tags` to filter), then read those full entries. Do not rely on the startup digest alone.
 
 Before every failure-memory write:
 
@@ -80,6 +82,18 @@ Do not replace failure memory with a silent fallback. If the original method cou
 
 Prefer project-specific memory for repo-specific lessons and global memory for cross-project workflow/tooling/reviewer coordination lessons. When both apply, write the project-specific lesson and also update the global lesson if the prevention rule is reusable across repositories.
 
+Tag each entry (`Tags`: language / area / error-type) so the startup digest and targeted retrieval can filter it.
+
+### Keeping the file small (consolidation)
+
+Control file size by **entry count, not by truncation**. Hook truncation is only a safety net. When the file grows past a sane size (roughly 30+ entries, or whenever entries overlap):
+
+- Merge duplicate or near-duplicate lessons into one entry and fold repeats into its `Recurrence` line.
+- Drop entries that are obsolete (the code/tool/path no longer exists) or fully superseded by a broader rule.
+- Keep newest first and keep each surviving entry's prevention rule and tags intact.
+
+Consolidate as part of the write step when you notice overlap; do not let the file grow unbounded and rely on the digest cap to hide it.
+
 ## Failure Memory Entry Template
 
 Use the target file's existing template when it defines one. If the target `FAILURE_MEMORY.md` is new or has no template yet, seed it with the structure below and use this format for the first entry, so later entries stay consistent:
@@ -97,6 +111,7 @@ Reusable failure lessons. Newest first. Keep entries concise and prevention-orie
 - **Root cause**: why it actually failed.
 - **Fix applied**: what made the repaired path valid.
 - **Prevention rule**: the reusable rule that avoids this next time.
+- **Tags**: language / area / error-type (used by the startup digest and targeted retrieval).
 - **Scope**: project-specific or cross-project.
 - **Recurrence**: note and increment if this lesson recurs (e.g. "seen again 2026-06-19").
 ```

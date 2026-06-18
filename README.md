@@ -11,6 +11,20 @@ Understand → plan → **approve** → implement → verify → selected review
 
 ---
 
+## Good to know (read before installing)
+
+What you're opting into:
+
+- **It uses more tokens than a normal chat.** One task can spawn the `implementer`, several reviewers, and the `gatekeeper`, and `security-reviewer` + `gatekeeper` run on `opus`. Expect noticeably higher token/cost usage than a one-shot edit. (Reviewers are chosen by risk, so simple tasks cost less.)
+- **`opus` access:** `security-reviewer` and `gatekeeper` request `opus`; if your account/session can't use it, those steps fall back to the available model and verdict quality may vary.
+- **Installing adds two hooks that run in *every* session — not only on udflow tasks:**
+  - `plan-gate` (PreToolUse) is **invisible during normal work**; it only blocks `Write`/`Edit`/`MultiEdit` **while you are in plan mode** — for any session while the plugin is installed, not just udflow tasks (Claude Code's own plan files are exempt, so the native plan flow still works).
+  - `load-failure-memory` (SessionStart) reads your recorded past-mistake notes at the start of every session and injects a short **digest** so Claude avoids repeating them; if there is no such file, it does nothing.
+- **It writes files.** The workflow may create `ai/FAILURE_MEMORY.md` in your repo (a new `ai/` folder) and `~/.claude/FAILURE_MEMORY.md` in your home directory. Decide whether to commit `ai/FAILURE_MEMORY.md` or add it to `.gitignore`.
+- **It can engage on its own.** udflow auto-starts for non-trivial engineering work even if you don't call `/udflow:run`, and stays out of trivial edits and plain Q&A. Use `/udflow:run` to force the full workflow.
+
+---
+
 ## Quick start
 
 Prerequisite: **Claude Code** installed.
@@ -50,20 +64,6 @@ understand → plan (plan mode) → you approve → implement → verify → sel
 - **Verify** runs build / test / lint / typecheck / browser evidence as applicable.
 - **Review** selects only the reviewers relevant to this change's risk (no ceremony).
 - **gatekeeper** returns `READY` / `FIX REQUIRED` / `NOT READY`; if a fix is needed it enters a repair loop until ready or clearly blocked.
-
----
-
-## Good to know
-
-A few things worth knowing before you rely on udflow:
-
-- **It uses more tokens than a normal chat.** One task can spawn the `implementer`, several reviewers, and the `gatekeeper`, and `security-reviewer` + `gatekeeper` run on `opus`. Expect noticeably higher token/cost usage than a one-shot edit. (Reviewers are chosen by risk, so simple tasks cost less.)
-- **`opus` access:** `security-reviewer` and `gatekeeper` request `opus`; if your account/session can't use it, those steps fall back to the available model and verdict quality may vary.
-- **Installing adds two hooks that run in *every* session — not only on udflow tasks:**
-  - `plan-gate` (PreToolUse) blocks `Write`/`Edit`/`MultiEdit` whenever you are in plan mode, for *all* your work while the plugin is installed (it exempts Claude Code's own plan files).
-  - `load-failure-memory` (SessionStart) injects your FAILURE_MEMORY into context on every start / resume / clear.
-- **It writes files.** The workflow may create `ai/FAILURE_MEMORY.md` in your repo (a new `ai/` folder) and `~/.claude/FAILURE_MEMORY.md` in your home directory. Decide whether to commit `ai/FAILURE_MEMORY.md` or add it to `.gitignore`.
-- **It can engage on its own.** udflow auto-starts for non-trivial engineering work even if you don't call `/udflow:run`, and stays out of trivial edits and plain Q&A. Use `/udflow:run` to force the full workflow.
 
 ---
 
@@ -139,13 +139,11 @@ udflow records "execution abnormalities that blocked, disrupted, or forced repai
 - Project-level: `ai/FAILURE_MEMORY.md`
 - Global: `~/.claude/FAILURE_MEMORY.md`
 
-### Read (automatic, via hook)
+### How it's loaded and used (three stages)
 
-The `SessionStart` hook (`hooks/load-failure-memory.js`) loads memory on every start/resume/clear, **project first → global fallback**:
-
-1. Look for `ai/FAILURE_MEMORY.md`; if present, inject it into context (capped ~12000 chars, truncated beyond that).
-2. If the project file is absent, fall back to `~/.claude/FAILURE_MEMORY.md`.
-3. If neither exists, skip silently — no error.
+1. **Startup digest (automatic, via hook).** The `SessionStart` hook (`hooks/load-failure-memory.js`) runs on every start/resume/clear and injects a **condensed digest** — each entry's title + prevention rule + tags, newest first, capped — using **project first → global fallback**. It's a small index, not the whole file; if neither file exists it skips silently. (Files that don't follow the template fall back to an entry-aware excerpt of the newest content.)
+2. **Targeted recall (during planning).** Once the task is known, the workflow searches the file for entries relevant to the affected files / area / language / `Tags` and reads those full entries — so only relevant lessons surface, not the entire history or a blind dump.
+3. **Consolidation (keeps the file small).** Size is controlled by merging duplicates, folding recurrences, and pruning obsolete entries — by entry count, not by truncation. The startup cap is only a safety net.
 
 ### Write (driven by the workflow, routed by the lesson's nature)
 
@@ -158,7 +156,7 @@ The write target depends on **what kind of lesson it is**, not a fixed order:
 
 Whichever side it writes, it **rereads the global `~/.claude/FAILURE_MEMORY.md` first** to merge with a similar existing entry (marking recurrences) instead of creating scattered duplicates. A filled-in example lives at [`examples/FAILURE_MEMORY.sample.md`](examples/FAILURE_MEMORY.sample.md).
 
-> In one line: **read = project-first, global-fallback; write = routed by the lesson's nature (project-specific → project, general → global, both → both), always rereading global first.**
+> In one line: **read = a small digest at startup + targeted recall during planning (project-first, global-fallback); write = routed by the lesson's nature (project-specific → project, general → global, both → both), always rereading global first; size is kept down by consolidation, not truncation.**
 
 ---
 
