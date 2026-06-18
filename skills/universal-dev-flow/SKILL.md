@@ -1,0 +1,127 @@
+---
+name: universal-dev-flow
+description: Use for non-trivial software work that requires implementation, verification, selected review, repair loops, or release-readiness judgment. Triggers on feature work, bug fixes, API or business-logic changes, test changes, behavioral refactors, frontend/UI changes, data-flow changes, and production-quality validation. Do not use for simple factual Q&A, pure brainstorming with no implementation intent, or trivial edits with no meaningful verification need.
+metadata:
+  short-description: Risk-proportional engineering workflow (plan-gated)
+---
+
+# Universal Dev Flow
+
+Use this workflow for non-trivial software work. The goal is to understand the requirement, plan the smallest safe change, get the plan approved, implement it, verify it, review it with the right specialists, repair findings, and finish with an evidence-based readiness judgment.
+
+This skill owns orchestration only. Agent personas and review depth live in the configured `agents/` subagents (`implementer`, `spec-reviewer`, `test-reviewer`, `code-reviewer`, `security-reviewer`, `architecture-reviewer`, `operability-reviewer`, `ui-ux-reviewer`, `gatekeeper`).
+
+## Scope
+
+Use this skill for:
+- feature implementation
+- bug fixes with behavioral impact
+- API, business-rule, or data-flow changes
+- tests or verification updates
+- refactors with behavioral impact
+- frontend, UI, or user-facing workflow changes
+- implementation work that should not be considered complete without verification
+
+Do not use this skill for:
+- simple factual answers
+- explanations with no implementation
+- pure brainstorming
+- trivial one-line edits with no meaningful verification need
+
+If the task is borderline, prefer this workflow.
+
+## Reference Loading
+
+Keep `SKILL.md` as the lightweight entry point. Read these references only when needed:
+
+- `references/review-packet.md`: before spawning reviewers or handing work to a reviewer.
+- `references/reviewer-selection.md`: before selecting or re-running a review panel.
+- `references/runtime-policy.md`: before using subagents, waiting on agents, or closing agents.
+- `references/verification-gate.md`: before verification, final delivery, or failure-memory updates.
+- `references/external-capabilities.md`: before using any MCP tool, external subagent, or external skill (including `ui-ux-pro-max` for UI work).
+
+Do not deep-chain references. All required workflow references are linked from this file.
+
+## Plan Gate (approve before any change)
+
+Non-trivial work must pass an explicit plan gate before implementation begins:
+
+1. Run requirement understanding and planning in **plan mode** (read-only). A plugin PreToolUse hook also blocks Write/Edit/MultiEdit while permission mode is `plan`, so the gate is enforced, not just requested.
+2. Present the plan for approval using **ExitPlanMode**. Only proceed to implementation after the user approves.
+3. When a decision has discrete options (e.g. competing designs, ambiguous business behavior, destructive vs. non-destructive paths), surface them with **AskUserQuestion** rather than guessing.
+4. Do not spawn `implementer` until the plan is approved and plan mode is exited.
+
+## Core Rules
+
+- Understand before coding.
+- Plan before coding, and get the plan approved at the plan gate.
+- Make the smallest safe change.
+- Modify only requested scope unless a broader change is required for correctness, safety, buildability, or testability.
+- Verify with commands, browser evidence, text-integrity checks, or explicit blockers as applicable.
+- Use the smallest sufficient formal review panel when subagents are authorized and available.
+- Do not spawn non-applicable reviewers merely to satisfy process.
+- Do not use full thread history as the default reviewer input.
+- Do not present local self-review as formal multi-agent review.
+- Do not mark work ready while blocker or unresolved major findings remain.
+- For any optional external capability (MCP / external subagent / external skill), detect availability first; if unavailable, do the work locally and disclose the gap. See `references/external-capabilities.md`.
+- Record failure memory for any execution abnormality that blocks, disrupts, or forces repair of the originally intended method; follow `references/verification-gate.md` before writing.
+
+## Language And Text Integrity
+
+For human-readable repository content, default to Traditional Chinese unless the file, repo convention, or user request clearly requires another language. Preserve technical contracts such as identifiers, API fields, database objects, configuration keys, file names, protocol values, and reviewer names.
+
+When touching human-readable text, check for mojibake, replacement characters, broken mixed encodings, unsafe localization of technical contracts, and inconsistent Traditional Chinese rendering. Prefer the smallest safe text fix and do not force broad encoding conversion unless the root cause and compatibility risk are understood.
+
+## Lifecycle
+
+1. Requirement understanding
+   - Restate the requirement.
+   - Identify inputs, outputs, business rules, constraints, edge cases, dependencies, affected users, systems, and runtime paths.
+   - State assumptions and ambiguity.
+   - Stop for user input (AskUserQuestion) when ambiguity materially affects business behavior, contracts, destructive operations, security posture, or user-visible UX flow.
+
+2. Planning (plan mode)
+   - Define affected modules or files, implementation approach, data/control-flow impact, risks, verification commands, expected tests, and rollout or rollback concerns when relevant.
+   - For UI work, include target screens, states, responsive/accessibility concerns, and browser verification target or blocker. If the `ui-ux-pro-max` skill is available, consult it for design decisions (styles, palettes, font pairings, UX guidelines) during planning; if unavailable, fall back to internal `ui-ux-reviewer` guidance and note that ui-ux-pro-max was not used (see `references/external-capabilities.md`).
+   - Before non-trivial implementation, review project-specific `ai/FAILURE_MEMORY.md` when it exists; otherwise review `~/.claude/FAILURE_MEMORY.md`. Before any failure-memory write, reread the global `~/.claude/FAILURE_MEMORY.md` and merge with a similar existing section when one exists.
+   - Present the plan via ExitPlanMode and wait for approval (Plan Gate).
+
+3. Implementation
+   - Use the `implementer` subagent (only after plan approval).
+   - Keep the diff scoped and traceable.
+   - Follow repository conventions first, then platform conventions.
+   - For UI/frontend work, prefer `ui-ux-pro-max` design tokens/guidance when available before writing UI; otherwise implement for usability and maintainability and disclose the fallback.
+   - Surface newly discovered risk immediately.
+
+4. Verification
+   - Run applicable build, test, lint, typecheck, migration, integration, browser, or repo-specific checks.
+   - For local browser-visible UI changes, use Claude in Chrome / in-app browser or an accepted fallback and record the target, scenario, observed result, tool used, screenshot need, and focus/hover/keyboard/clipboard behavior when relevant.
+   - For human-readable content, run text-integrity checks.
+   - If a command or check cannot run, state the exact blocker and remaining uncertainty.
+
+5. Review panel selection
+   - Always include `spec-reviewer` and `test-reviewer` for non-trivial formal review.
+   - Add conditional reviewers only when their risk criteria apply.
+   - Prepare a Review Packet before reviewer handoff.
+   - Read `references/review-packet.md` and `references/reviewer-selection.md`.
+
+6. Parallel review
+   - Run selected reviewers in parallel when possible and authorized.
+   - If runtime or policy prevents subagent use, state that limitation and continue with local evidence without calling it formal multi-agent review.
+   - Read `references/runtime-policy.md` before spawning agents.
+
+7. Conflict resolution and gatekeeper
+   - Compare reviewer findings by evidence, not tone.
+   - `architecture-reviewer` owns boundaries, layering, dependency direction, and structural placement.
+   - `code-reviewer` owns local implementation quality, simplicity, framework usage, and efficiency on changed paths.
+   - Run `gatekeeper` only after selected reviewers finish.
+   - `gatekeeper` decides `READY`, `FIX REQUIRED`, or `NOT READY` and whether failure memory is required.
+
+8. Auto-fix loop
+   - If verdict is `FIX REQUIRED` or `NOT READY`, fix concrete findings, rerun relevant verification, rerun only affected reviewers, rerun `gatekeeper`, and repeat until `READY` or clearly blocked.
+   - If a fix introduces a new risk category, add the corresponding conditional reviewer.
+   - If the same blocker category persists across two consecutive iterations, produce a Stuck Summary.
+
+9. Final delivery
+   - Follow the final output contract in `references/verification-gate.md`.
+   - Include what changed, files changed, assumptions, verification, findings, missing tests, risks, external-capability disclosures, failure-memory decision, and final verdict.

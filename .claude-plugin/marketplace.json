@@ -1,0 +1,20 @@
+{
+  "name": "kktmarketplace",
+  "owner": {
+    "name": "kktu",
+    "url": "https://github.com/kktu"
+  },
+  "metadata": {
+    "description": "kktu's Claude Code plugin marketplace.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "udflow",
+      "source": "./",
+      "description": "Universal Dev Flow — risk-proportional multi-agent engineering workflow.",
+      "version": "0.1.0",
+      "category": "workflow"
+    }
+  ]
+}
