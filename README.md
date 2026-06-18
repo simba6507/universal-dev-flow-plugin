@@ -50,6 +50,15 @@ It then runs: understand → plan → present via **ExitPlanMode** for your appr
 
 > **Stays out of the way for small stuff.** udflow only engages for non-trivial engineering work; trivial edits and plain Q&A are left alone. Want to force the full workflow on anything? Use `/udflow:run`.
 
+### Updating to a newer version
+
+Already installed an older version? Refresh the marketplace and reload — no uninstall needed:
+
+    /plugin marketplace update kktmarketplace
+    /reload-plugins
+
+Custom marketplaces do **not** auto-update, so run `marketplace update` manually. Check the installed version in `/plugin`.
+
 ---
 
 ## How it works

@@ -50,6 +50,15 @@
 
 > **小事它會自動讓路。** udflow 只在「非瑣碎工程工作」時介入;瑣碎修改與純問答不會被打擾。想對任何任務強制走完整流程?用 `/udflow:run`。
 
+### 更新到新版本
+
+已經裝了舊版?刷新 marketplace 再 reload 即可,不必移除重裝:
+
+    /plugin marketplace update kktmarketplace
+    /reload-plugins
+
+自訂 marketplace **不會**自動更新,所以要手動跑 `marketplace update`。可在 `/plugin` 確認已安裝的版本。
+
 ---
 
 ## 運作流程
