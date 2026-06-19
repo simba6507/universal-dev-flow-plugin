@@ -26,7 +26,7 @@ Understand → plan → **approve** → implement → verify → selected review
 
 **Limits:** n=8, one repo / one language; bugs were drawn from `fix` commits (some previously surfaced by a review), biasing toward catchable; concurrency/integration bugs were not tested; each bug saw a single reviewer or a small panel with **no plan/requirements context**, which understates a full udflow run. **Directional, not a guarantee.**
 
-**Graduation criteria** — the "experimental" label comes off when udflow has been used on **≥3 external repos across ≥2 languages and ≥20 real tasks**, with documented catch and false-positive rates, *including bugs not previously found by a review*.
+**Graduation criteria** — tracked in [`EVIDENCE.md`](EVIDENCE.md) (a manual log; udflow ships no telemetry). The "experimental" label comes off only when that log documents **≥3 external repos across ≥2 languages and ≥20 qualifying data points** (blind bug-catches or verified live tasks) with computed catch & false-positive rates, **at least half from bugs not previously found by a review**. Strict: only runs with a *verifiable ground truth* count — adoption/testimonials are tracked separately and don't move the rates. _Now: 1 repo · 1 language · 8 points._
 
 </details>
 
