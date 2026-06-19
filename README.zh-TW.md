@@ -5,7 +5,28 @@
 [English](README.md) · **繁體中文**
 
 **Claude Code 的「計劃閘門、風險比例」程式審查 + 上線把關工作流。**
-理解 → 計劃 → **核准** → 實作 → 驗證 → 選擇性審查 → **gatekeeper 裁決**(`READY` / `FIX REQUIRED` / `NOT READY`)。
+
+> 不是拿來抓錯字的。當「做完」必須等於「可以上線」時,才用 udflow。
+
+```text
+任務
+  ↓
+理解需求
+  ↓
+Plan mode —— 此時不動任何程式碼
+  ↓
+你核准
+  ↓
+最小安全實作
+  ↓
+Build / test / lint / 瀏覽器佐證
+  ↓
+依風險挑選的審查員
+  ↓
+Gatekeeper 裁決:READY / FIX REQUIRED / NOT READY
+```
+
+用於 Claude Code「不該自己宣稱完成」的非瑣碎工程工作。
 
 > 一句話:讓 Claude 在改程式碼前先把計劃攤開給你核准,實作後由一組合適的審查員**對著你的意圖**把關、把問題自動修掉,最後給出「能不能交付」的裁決——而不是寫完就說「好了」。
 
