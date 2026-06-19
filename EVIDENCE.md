@@ -120,6 +120,19 @@ Plus 3 clean controls (fixed code re-reviewed with the discipline): **0 false po
 
 **Conclusion:** the prose discipline is **safe** (0 added FP, controls clean) but does **not** lift single-reviewer recall — stronger wording cannot make a lone reviewer catch a subtle idiom/omission/domain bug. The **panel** (a structural mechanism) recovers defects prose cannot, at high precision. Shipped (v0.9.0): the discipline (as a safe guard-rail) **plus** recall-vs-precision guidance steering catch-critical work to the panel / Deep Mode / intent context. The recall lever is structural, not reviewer prose.
 
+### Context-isolation experiment — 2026-06-19 · does feeding *intent* lift recall?
+
+Took 6 bugs a single reviewer **missed even with the discipline** (Phase D: 0 hit / 6 miss): PY2/PY4/PY7 (requests) + GO2/GO3/GO4 (gin). Re-ran the **same** single `code-reviewer`, **same** discipline, **same** packets — changing exactly **one variable**: an inlined `CONTEXT (intent)` note stating the code's required contract (the contract, never the defect).
+
+| Condition | hit | partial | miss | FP |
+|---|---|---|---|---|
+| Phase D — discipline, **no** intent | 0 | 0 | 6 | 0 |
+| **+ inlined intent note** | **5** | 0 | 1 | 0 |
+
+**0/6 → 5/6, 0 FP, single variable = intent.** Even subtle-semantics misses flipped (PY4 char-vs-byte — reviewer cited "café" = 4 chars / 5 bytes; GO3 pointer-receiver — gave a concrete failing `errors.Is` case; PY7 `__getattr__` proxy — blocker). The lone remaining miss (GO4) was **not** a context failure: the reviewer saw the missing Content-Length and argued Go auto-computes it (a defensible non-defect — that bug was weakly framed).
+
+**Conclusion:** the dominant recall lever is **feeding reviewers the intent/contract**, not the language and not local build. This directly answers "was C# higher because it could build locally?" — **no**: no build ran for any language in the benchmark; C# scored higher partly because several C# packets had intent inlined, and giving Python/Go the same intent reproduced the jump. It also explains why the blind benchmark's ~34% **understates real udflow**: the Review Packet already delivers the intent (Task / Success criteria / Reviewer scope) that this experiment shows is worth roughly **+80 points of recall**. udflow's design is right; the blind harness simply withheld that input.
+
 ## Adding an entry
 
 Append a new `### Run N — date · repo (language) · type` section with a table like Run 1's, then update the
