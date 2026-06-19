@@ -45,7 +45,7 @@ Drop the **"experimental"** label when this file documents **all** of:
 | Catch rate | 11 hit + 5 partial / 32 (**34% hit; 50% touched**) | (reported, not a pass/fail) |
 | False-positive rate | **0** across the 32-bug single-reviewer corpus (**1** total across ~90 reviews incl. panel re-tests) | (reported) |
 
-**Status: graduation criteria are MET** (≥3 repos ✓, ≥2 languages ✓, ≥20 points ✓, anti-bias ✓, rates documented ✓). Two recall figures, **both at 0 false positives**: **diff-only ~34%** (reviewer sees only the code) and **with-intent ~84% (27/32)** (reviewer also gets the contract/intent — which real udflow's Review Packet supplies to every reviewer). The with-intent profile is the one that reflects real use. This now **strongly supports relabeling** from "experimental" (still the maintainer's call), subject to the standing validity caveat that the with-intent notes were author-written. A *characterized* "beta" that states the profile (near-zero FP; high recall when given intent; modest when blind) is the honest label.
+**Status: graduation criteria are MET** (≥3 repos ✓, ≥2 languages ✓, ≥20 points ✓, anti-bias ✓, rates documented ✓). Recall, all at **0 false positives**, depends on the intent given to the reviewer: **~34% with no intent (diff only)**; **~84% (27/32) with very specific, author-written contract-level intent**; but a **bug-blind native-doc intent test was far lower** (a strict author-bias check — see below), so **84% is an optimistic upper bound, not the typical figure**. Real-use recall depends on how contract-specific the Review Packet's intent is, and sits somewhere in 34%–84%. The robust, condition-independent strength is the **near-zero false-positive rate**. Net: the *coverage* criteria are met, but given that recall is intent-quality-dependent and the 84% is bias-inflated, a **conservative relabel** (e.g. a *characterized* "beta" stating "near-zero FP; recall scales with the quality of the intent you give it") is more defensible than dropping the caveat — maintainer's call.
 
 ## Entries
 
@@ -147,6 +147,16 @@ Re-ran the **entire 32-bug corpus** (same packets, same single `code-reviewer`, 
 **Validity caveat (important):** the intent notes were author-written with knowledge of the bugs, so the 84% carries an upward-bias risk. Mitigants: the notes state purpose/contract (defect-agnostic); 5 bugs were still not caught (a pure leak would catch all); and 0 false positives shows reviewers were not rubber-stamping. A stricter version would derive intent from each repo's own docs/issues.
 
 **Conclusion:** this *measures* what the earlier context-isolation test implied — the blind ~34% was dominated by **withheld intent**, not a capability ceiling. With intent (which real udflow's Review Packet supplies to every reviewer), the profile is **~84% hit / 0 false positives**. This materially strengthens the case to relabel from "experimental"; still the maintainer's call, but the with-intent profile is the one that reflects real use.
+
+### Strict native-intent test — 2026-06-19 · author-bias check on the 84%
+
+To remove author bias from the with-intent 84%, a **bug-blind** agent wrote each intent from only the function's signature + native doc-comment (no body, no fix), then a reviewer reviewed the real code against that machine-written intent. 12 bugs, 2 per language. **Result: 0 hit / 2 partial / 10 miss / 0 FP.** Audited the generated intents: **no leakage** (all defect-agnostic purpose statements).
+
+Two effects are tangled here, reported honestly:
+- **(confound) Doc-context extraction was unreliable** — for ~4 bugs (B3, GO3, B6, AX1) the intent-writer was fed the wrong unit / mid-function / a type block (it flagged this itself), so its intent was garbage and the review was derailed (B3 was even a *hit* diff-only but a miss here). Those 4 do not count as a clean native-intent measurement.
+- **(real signal) Where the native intent was well-formed** (PY4, PY7, GO2, AX3 — sensible contracts), recall was still **0 hit / 1 partial**, whereas the *author-written specific* intent had caught all four.
+
+**Calibration / correction:** the with-intent **84% was inflated by author-supplied specificity.** The lift does not come from merely *having* intent — it scales with how **contract-specific** the intent is. A function's own docs usually state only *purpose* ("returns the body length") and did not lift recall; the author notes stated the *contract* ("must be the exact UTF-8 byte count") and did. So real-udflow recall depends on the **quality of the intent in the Review Packet**, sitting between **~34% (no intent)** and **~84% (very specific intent)**, and likely **well below 84% unless the packet carries contract-level intent**. False positives stayed 0 throughout. (This strict run is itself partly confounded by extraction; a clean re-run with verified per-function docs would pin the native number — not yet done.)
 
 ## Adding an entry
 
