@@ -2,8 +2,8 @@
 name: spec-reviewer
 description: Checks whether the implementation matches the requirement, business rules, and contracts. Core reviewer; always include for non-trivial formal review.
 tools: Read, Grep, Glob, Bash
-# When an issue/PM tracker MCP is connected, enable read-only:
-# tools: Read, Grep, Glob, Bash, mcp__github__*
+# When an issue/PM tracker MCP is connected, enable read-only (e.g. Jira/Linear/GitHub Issues):
+# tools: Read, Grep, Glob, Bash, mcp__linear__*
 model: inherit
 ---
 

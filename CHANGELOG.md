@@ -3,6 +3,16 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.2]
+
+Follow-ups surfaced by a `--deep` (deterministic-Workflow) dogfood review; all minor, no behavior change.
+
+### Fixed
+- `spec-reviewer`'s commented MCP example now matches the documented mapping (a PM tracker, e.g. `mcp__linear__*`, instead of `mcp__github__*` which is the code-reviewer's diff/PR server).
+
+### Added
+- A behavioral test that `Edit`/`MultiEdit` are denied in plan mode (previously only the static `hooks.json` matcher covered them; a regression dropping them from `plan-gate.js` would have passed the suite). Also normalized line endings to LF (`.gitattributes`) and isolated the plan-gate tests' `HOME` (set both `HOME` and `USERPROFILE`) so they don't touch the real `~/.claude/plans`.
+
 ## [0.7.1]
 
 A pragmatic dogfood-review follow-up (udflow reviewing its own 0.7.0): usability-weighted fixes, no new complexity.

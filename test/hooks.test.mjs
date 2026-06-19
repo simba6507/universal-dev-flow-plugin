@@ -158,6 +158,13 @@ test("NotebookEdit is gated in plan mode", () => {
   assert.strictEqual(gate({ tool_name: "NotebookEdit", permission_mode: "plan", tool_input: { notebook_path: nb } }), "DENY");
 });
 
+test("Edit and MultiEdit are behaviorally gated in plan mode", () => {
+  const f = path.join(os.tmpdir(), "proj", "app.ts");
+  for (const tool of ["Edit", "MultiEdit"]) {
+    assert.strictEqual(gate({ tool_name: tool, permission_mode: "plan", tool_input: { file_path: f } }), "DENY", `${tool} must be denied in plan mode`);
+  }
+});
+
 test("Read is never gated", () => {
   assert.strictEqual(gate({ tool_name: "Read", permission_mode: "plan", tool_input: { file_path: "/x/y.ts" } }), "ALLOW");
 });
