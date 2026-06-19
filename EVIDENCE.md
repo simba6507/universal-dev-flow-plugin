@@ -38,14 +38,14 @@ Drop the **"experimental"** label when this file documents **all** of:
 
 | Metric | Now | Target |
 |---|---|---|
-| External repos | **1** (Plan_PJ) | ≥ 3 |
-| Languages | **1** (C#/.NET) | ≥ 2 |
-| Qualifying data points | **8** | ≥ 20 |
-| Not-previously-review-found bugs | **5 / 8** | ≥ half |
-| Catch rate | 6 hit + 1 partial / 8 | (reported, not a pass/fail) |
-| False-positive rate | **0** of ~46 findings | (reported) |
+| External repos | **2** (Plan_PJ, axios) | ≥ 3 |
+| Languages | **2** (C#/.NET, JS) ✓ | ≥ 2 |
+| Qualifying data points | **13** | ≥ 20 |
+| Not-previously-review-found bugs | **10 / 13** ✓ | ≥ half |
+| Catch rate | 7 hit + 3 partial / 13 (54% hit; 77% incl. partial) | (reported, not a pass/fail) |
+| False-positive rate | **0** of ~52 findings | (reported) |
 
-**Status: not yet graduated** — 1/3 repos, 1/2 languages, 8/20 points.
+**Status: not yet graduated** — 2/3 repos, 13/20 points (languages ✓, anti-bias ✓; need 1 more repo and 7 more points).
 
 ## Entries
 
@@ -74,6 +74,21 @@ binaries) — and a full 3-reviewer panel did **not** help, which says the lever
 intent/spec/plan, not adding reviewers. Limits: single repo/language; bugs from `fix` commits (3/8 previously
 review-found); no concurrency/integration bugs tested; reviewers got no plan/requirements context, which
 **understates** a full udflow run.
+
+### Run 2 — 2026-06-19 · axios (Node/JS) · retroactive blind bug-catch
+
+Method: same blind method, but a **single `code-reviewer`** per bug (the conservative floor — no panel, no plan/spec context). 5 real fixed bugs, all from issue/PR fixes (none previously review-found). Independent judge scored each.
+**Result: 1 hit / 2 partial / 2 miss · 0 false positives** (~16 findings; 6 extra plausible).
+
+| Bug | Defect | Verdict | FP |
+|---|---|---|---|
+| AX5 | `new URL(path-only, undefined)` throws in Node when `socketPath` is set | **hit** (blocker) | 0 |
+| AX3 | error-code array-index `[...][floor(status/100)-4]` → `undefined` for status ≥ 600 | **partial** (found it, rated minor) | 0 |
+| AX4 | data-URI parsing regex does not match RFC 2397 | **partial** (grazed one symptom) | 0 |
+| AX1 | regular `function` loses the enclosing `this` (needs an arrow) | **miss** (declared file correct) | 0 |
+| AX2 | progress reducer reads `e.loaded` without guarding a malformed event | **miss** (found a *different* minor) | 0 |
+
+Lessons: the **single-reviewer floor on unfamiliar, subtle code is low** (1/5 clean) — versus Run 1's 6/8 with panels and code-visible bugs. But **0 false positives held** on a different repo and language. Weak spots blind: language idioms (`this`), domain-knowledge bugs (RFC/dependency behavior). Note AX3 — the reviewer *found* the defect but under-rated its severity (→ partial), a calibration gap, not blindness. The single reviewer + absent plan/spec context understate a full udflow run.
 
 ## Adding an entry
 

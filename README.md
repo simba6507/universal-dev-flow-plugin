@@ -9,24 +9,25 @@ Understand → plan → **approve** → implement → verify → selected review
 
 > In one line: udflow makes Claude Code lay out a plan and get your approval before it changes code, then has the right specialist reviewers check the work, and finishes with a gatekeeper verdict on whether it's shippable — instead of just saying "done."
 
-> **Status: early / experimental.** The hooks are tested; the multi-agent orchestration is prompt-driven. A first blind benchmark on an external repo is encouraging — **6 of 8 real bugs caught, 0 false positives** (see the Evidence note below) — but the sample is small. Treat it as a disciplined scaffold.
+> **Status: early / experimental.** The hooks are tested; the multi-agent orchestration is prompt-driven. Across two blind benchmarks (C#/.NET + Node/JS, 13 real bugs): **0 false positives**, but catch rate swings widely with reviewer panel size and bug subtlety (see the Evidence note below). Treat it as a disciplined scaffold.
 
 <details>
-<summary><b>Evidence (field notes)</b> — first blind benchmark, directional (not yet a guarantee)</summary>
+<summary><b>Evidence (field notes)</b> — two blind benchmarks, directional (not yet a guarantee)</summary>
 
-**Retroactive blind bug-catch (2026-06-19).** udflow's reviewers were run *blind* on the pre-fix code of **8 real historical bugs** from an external C#/.NET repo (a different stack from this Node plugin). Each reviewer saw only the buggy region — not the fix, not the issue, not the repo — and an independent judge scored its findings against the known defect.
+**Retroactive blind bug-catch (2026-06-19).** udflow's reviewers were run *blind* on the pre-fix code of **13 real historical bugs** across **two external repos / two languages** (C#/.NET and Node/JS — both different from this plugin's stack). Each reviewer saw only the buggy region — not the fix, not the issue, not the repo — and an independent judge scored its findings against the known defect.
 
-| 8 real bugs, blind | Caught | Partial | Missed | False positives |
+| 13 real bugs · 2 repos · 2 languages · blind | Caught | Partial | Missed | False positives |
 |---|---|---|---|---|
-| outcome | **6** | 1 | 1 | **0** (of ~46 findings) |
+| outcome | **7** | 3 | 3 | **0** (of ~52 findings) |
 
-- **Caught — concrete, code-visible defects:** an undisposed `HttpResponseMessage`; unbounded text written to a `nvarchar(4000)` column; raw JSON polluting a search index; a flat iteration cap violating a per-role spec; a UI count that never refreshes during a background job; and a form whose `DataAnnotationsValidator` was a no-op because the model carried no validation attributes.
-- **Missed / partial — omission-vs-intent defects:** a missing cascade-delete of a child table, and statistics that should have excluded binary files. The code "looks fine" unless you know the intent — and a **full three-reviewer panel did not help**, which suggests the lever is feeding reviewers the *intent/spec*, not adding more reviewers.
-- **0 false positives** across both rounds (~46 findings; ~40 additional findings were plausible-but-unverified — thoroughness, not confirmed catches).
+- **Consistent signal — 0 false positives** across both repos and languages (~52 findings; ~46 more were plausible-but-unverified — thoroughness, not confirmed catches).
+- **Catch rate is highly variable.** Run 1 (C#, with reviewer panels and several code-visible defects) caught **6/8**; Run 2 (Node/JS, a *single* reviewer on subtler bugs) caught only **1/5** (2 more partial). It depends heavily on (a) running the **full panel** vs one reviewer and (b) how subtle the bug is.
+- **Caught well:** concrete, code-visible defects — resource leaks, a DB-column overflow, a `new URL()` that throws on a path-only input, a no-op form validator, a search index polluted with raw JSON.
+- **Weak spots:** subtle language idioms (a wrong `this` binding), domain-knowledge bugs (RFC / dependency behavior), and omission-vs-intent defects (a missing cascade-delete; stats that should exclude binaries). A full 3-reviewer panel did **not** rescue the omission cases — the lever is feeding reviewers the *intent/spec*, not more reviewers. Sometimes a reviewer finds the defect but **under-rates its severity** (scored partial).
 
-**Limits:** n=8, one repo / one language; bugs were drawn from `fix` commits (some previously surfaced by a review), biasing toward catchable; concurrency/integration bugs were not tested; each bug saw a single reviewer or a small panel with **no plan/requirements context**, which understates a full udflow run. **Directional, not a guarantee.**
+**Limits:** n=13, two repos; many bugs drawn from `fix` commits (Run 1 had a few previously surfaced by a review; Run 2's were all from issue/PR fixes); concurrency/integration bugs barely tested; reviewers got **no plan/requirements context** and Run 2 used a **single reviewer** — both *understate* a full udflow run. **Directional, not a guarantee.**
 
-**Graduation criteria** — tracked in [`EVIDENCE.md`](EVIDENCE.md) (a manual log; udflow ships no telemetry). The "experimental" label comes off only when that log documents **≥3 external repos across ≥2 languages and ≥20 qualifying data points** (blind bug-catches or verified live tasks) with computed catch & false-positive rates, **at least half from bugs not previously found by a review**. Strict: only runs with a *verifiable ground truth* count — adoption/testimonials are tracked separately and don't move the rates. _Now: 1 repo · 1 language · 8 points._
+**Graduation criteria** — tracked in [`EVIDENCE.md`](EVIDENCE.md) (a manual log; udflow ships no telemetry). The "experimental" label comes off only when that log documents **≥3 external repos across ≥2 languages and ≥20 qualifying data points** (blind bug-catches or verified live tasks) with computed catch & false-positive rates, **at least half from bugs not previously found by a review**. Strict: only runs with a *verifiable ground truth* count — adoption/testimonials are tracked separately and don't move the rates. _Now: 2 repos · 2 languages · 13 points (languages ✓, anti-bias ✓; still need ≥3 repos and ≥20 points)._
 
 </details>
 
