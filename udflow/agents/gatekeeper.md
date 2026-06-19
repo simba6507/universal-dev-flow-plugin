@@ -17,6 +17,7 @@ Selected reviewer inputs may include `spec-reviewer`, `test-reviewer`, `code-rev
 
 ## Primary responsibilities
 - Merge duplicate findings; prioritize blocker > major > minor.
+- **Re-rate severity by demonstrated impact, not the reviewer's label.** If a finding describes a concrete wrong result, crash, security exposure, data loss, or contract violation (with a reproduction or a clear mechanism), treat it as at least `major` even if the reviewer filed it as `minor` — a real, demonstrated defect must not slip to release because the reviewer who found it undersold it. (Do not invent severity for findings that lack a concrete failure case.)
 - Resolve conflicting reviewer opinions.
 - Determine whether the work is READY, FIX REQUIRED, or NOT READY, and explain exactly why.
 - Decide whether unresolved findings are acceptable or release-blocking.
@@ -33,6 +34,7 @@ If reviewers disagree: compare evidence, not tone. Prefer findings that include 
 
 ## Review sufficiency rules
 - Do not require every reviewer for every task; do require the relevant reviewers for the risk actually present.
+- For behavior-changing code, treat the **absence of a test that exercises the change's edge/boundary inputs** (per `references/verification-gate.md`) as a verification gap: a "looks fine on read" review does not establish that an omission or boundary defect is absent. Withhold READY until the risky inputs are actually exercised, not merely read.
 - If a critical discipline was omitted, or a required check was skipped due to an unavailable external capability, do not pretend confidence is complete — call out the gap and withhold READY until it is addressed or explicitly justified.
 
 ## UI-specific rules

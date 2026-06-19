@@ -3,6 +3,17 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.2]
+
+Two gatekeeper improvements targeting the two biggest addressable failure categories found in a 77-bug / 12-repo / 6-language automated benchmark. Language-neutral.
+
+### Changed
+- **Gatekeeper re-rates severity by demonstrated impact** (`gatekeeper.md`): a finding describing a concrete wrong result / crash / security exposure / data loss / contract violation (with a repro or clear mechanism) is treated as **≥ major even if the reviewer filed it as minor** — so a real, demonstrated defect doesn't slip because its finder undersold it. Targets the "found-it-but-rated-minor" mode (~15% of misses in the benchmark). Zero added false-positive risk (it only escalates findings that already describe a concrete failure).
+- **Gatekeeper enforces edge-input verification for behavior-changing code**: the absence of a test exercising the change's edge/boundary inputs (per `verification-gate.md`) is a verification gap — a read-only "looks fine" review does not establish an omission/boundary defect is absent, so READY is withheld until risky inputs are actually exercised. Targets the #1 failure category (omissions ~36%).
+
+### Notes (benchmark this is based on)
+- 77 real bugs, 12 repos, 6 languages, automated harness (clean extraction, bug-blind intent, judged vs the real fix diff): **~29% hit / ~39% touched / 1 false positive in 77**. Confirms at scale that the **near-zero false-positive rate is the robust strength**, and that blind/native-intent recall (~30%) sits near the diff-only floor — the earlier 84% required *specific, author-written* intent. Failure corpus: omission 36%, found-other-bug 18% (a real but different defect — real-world value above the hit rate), language-idiom 16%, severity-underrate 15%, domain-knowledge 15%.
+
 ## [0.9.1]
 
 Structural fixes targeting the **solvable** causes of the misses found in the v0.9.0 cross-language benchmark (the lesson there: structure moves recall, prose does not). Language-neutral.

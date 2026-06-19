@@ -38,12 +38,12 @@ Drop the **"experimental"** label when this file documents **all** of:
 
 | Metric | Now | Target |
 |---|---|---|
-| External repos | **6** (Plan_PJ, axios, requests, gson, gin, clap) | ≥ 3 ✓ |
+| External repos | **~13** (Plan_PJ, axios, requests, gson, gin, clap, flask, express, cobra, ripgrep, jackson-core, Newtonsoft.Json, Polly) | ≥ 3 ✓ |
 | Languages | **6** (C#, JS, Python, Java, Go, Rust) | ≥ 2 ✓ |
-| Qualifying data points | **32** | ≥ 20 ✓ |
-| Not-previously-review-found bugs | **29 / 32** | ≥ half ✓ |
-| Catch rate | 11 hit + 5 partial / 32 (**34% hit; 50% touched**) | (reported, not a pass/fail) |
-| False-positive rate | **0** across the 32-bug single-reviewer corpus (**1** total across ~90 reviews incl. panel re-tests) | (reported) |
+| Qualifying data points | **109** (32 curated + 77 automated) | ≥ 20 ✓ |
+| Not-previously-review-found bugs | nearly all (curated 29/32; all 77 automated from `fix` commits) | ≥ half ✓ |
+| Catch rate | curated diff-only 34% hit; automated bug-blind-intent (n=77) **~29% hit / ~39% touched**; ~84% only with specific author intent (upper bound) | (reported) |
+| False-positive rate | **~0** — 0 across the 32 single-reviewer corpus; **1 in 77** automated; 1 more only when fanning out to a panel | (reported) |
 
 **Status: graduation criteria are MET** (≥3 repos ✓, ≥2 languages ✓, ≥20 points ✓, anti-bias ✓, rates documented ✓). Recall, all at **0 false positives**, depends on the intent given to the reviewer: **~34% with no intent (diff only)**; **~84% (27/32) with very specific, author-written contract-level intent**; but a **bug-blind native-doc intent test was far lower** (a strict author-bias check — see below), so **84% is an optimistic upper bound, not the typical figure**. Real-use recall depends on how contract-specific the Review Packet's intent is, and sits somewhere in 34%–84%. The robust, condition-independent strength is the **near-zero false-positive rate**. Net: the *coverage* criteria are met, but given that recall is intent-quality-dependent and the 84% is bias-inflated, a **conservative relabel** (e.g. a *characterized* "beta" stating "near-zero FP; recall scales with the quality of the intent you give it") is more defensible than dropping the caveat — maintainer's call.
 
@@ -157,6 +157,18 @@ Two effects are tangled here, reported honestly:
 - **(real signal) Where the native intent was well-formed** (PY4, PY7, GO2, AX3 — sensible contracts), recall was still **0 hit / 1 partial**, whereas the *author-written specific* intent had caught all four.
 
 **Calibration / correction:** the with-intent **84% was inflated by author-supplied specificity.** The lift does not come from merely *having* intent — it scales with how **contract-specific** the intent is. A function's own docs usually state only *purpose* ("returns the body length") and did not lift recall; the author notes stated the *contract* ("must be the exact UTF-8 byte count") and did. So real-udflow recall depends on the **quality of the intent in the Review Packet**, sitting between **~34% (no intent)** and **~84% (very specific intent)**, and likely **well below 84% unless the packet carries contract-level intent**. False positives stayed 0 throughout. (This strict run is itself partly confounded by extraction; a clean re-run with verified per-function docs would pin the native number — not yet done.)
+
+### Scaled automated benchmark — 2026-06-20 · n=77, 12 repos, 6 languages
+
+Built a **validated automated harness** (a Bash agent clones each repo, auto-selects localized `fix` commits, extracts the COMPLETE pre-fix function with self-validation, and provides the real fix diff as ground truth → a bug-blind agent writes the intent → reviewer reviews against it → judge scores vs the fix diff). Validated on 3 repos (15/15 clean extraction, no contamination) then scaled.
+
+**77 bugs across 12 repos / 6 languages (Py/JS/Go/Rust/Java/C#): 22 hit / 8 partial / 47 miss / 1 FP** (~29% hit, ~39% touched, **1 false positive in 77**). Per-language hit rate varied (Rust weakest at 1/14 — lifetime/ownership semantics; others 28–57%).
+
+This is the cleanest, largest, no-author-bias measurement, and it **confirms at scale**: the **near-zero false-positive rate is the robust strength**, and **blind/native-intent recall (~30%) sits near the diff-only floor** — the earlier 84% required *specific, author-written* intent (now firmly an optimistic upper bound).
+
+**Failure corpus (55 miss+partial, judge-categorized):** omission **36%** (#1 — missing behavior vs intent) · found-other-bug **18%** (a real but *different* defect — real-world value exceeds the hit rate) · language-idiom **16%** · severity-underrate **15%** (found it, rated minor) · domain-knowledge **15%**.
+
+**Improvements shipped from this corpus (v0.9.2, language-neutral):** (1) the **gatekeeper re-rates severity by demonstrated impact** — a found-but-undersold concrete defect is escalated to ≥major (targets the 15%, ~0 added FP); (2) the **gatekeeper enforces edge-input verification** for behavior-changing code (targets the 36% omissions). The idiom/domain ~31% is the genuine ceiling (needs running/specific intent, not prose). found-other-bug is a benchmark artifact, not a defect to fix (real use keeps those finds).
 
 ## Adding an entry
 
