@@ -3,6 +3,11 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.1]
+
+### Changed
+- **Verification gate now warns about backgrounding build/test commands.** A lingering child process (a build server, file watcher, or dev server) that inherits a backgrounded command's output pipe keeps the background task stuck "running" long after the command finished. `verification-gate.md` now says to prefer foreground, and for the common .NET case (MSBuild node-reuse workers + the Roslyn `VBCSCompiler` server persist for minutes) to add `/p:UseSharedCompilation=false /nr:false` (or `MSBUILDDISABLENODEREUSE=1`) when backgrounding. Surfaced by a real session where a `dotnet test` that finished in ~2s left a background task wedged behind orphaned build servers. Root cause is the .NET SDK + harness background-pipe semantics (not udflow); this is a guard-rail, not a fix.
+
 ## [0.8.0]
 
 Closes the documented plan-gate Bash gap with a narrow, low-false-positive tripwire (informed by an independent cross-model second opinion from Codex, then trimmed for usability).

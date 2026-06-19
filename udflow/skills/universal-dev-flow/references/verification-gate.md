@@ -11,6 +11,8 @@ Run the narrowest meaningful checks for the task:
 - Data/config/deployment: migration validation, schema guard, config checks, deployment or rollback evidence when feasible.
 - Additional focused tests when the changed path has targeted suites or scripts.
 
+Prefer running build/test commands in the **foreground** — the runner reaps them cleanly. If you background one, make sure it leaves **no lingering child process** (a build server, file watcher, or dev server): a survivor that inherits the command's output pipe keeps the background task stuck "running" long after the command has actually finished. .NET is the common case — `dotnet build`/`dotnet test` spawn MSBuild node-reuse workers and the Roslyn `VBCSCompiler` server that persist for minutes; if you must background a .NET build/test, add `/p:UseSharedCompilation=false /nr:false` (or set `MSBUILDDISABLENODEREUSE=1`) so nothing is left holding the pipe.
+
 For every skipped check, state the command or check, why it could not run, and remaining uncertainty.
 
 ## Browser Evidence
