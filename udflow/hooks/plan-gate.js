@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-// udflow plan gate: deny structured edits (Write/Edit/MultiEdit/NotebookEdit) while
-// permission mode is "plan", except Claude Code's own plan files under ~/.claude/plans/.
+// udflow plan gate: while permission mode is "plan", deny structured edits
+// (Write/Edit/MultiEdit/NotebookEdit) except Claude Code's own plan files under
+// ~/.claude/plans/, and deny Bash commands that obviously write the working tree
+// (redirect-to-file, tee-to-file, sed -i, git apply). The Bash check is a narrow
+// tripwire for the common cases — not full shell classification; it defaults to allow.
 // Cross-platform Node; fail-open (exit 0 = allow) on any error so it never breaks a session.
 const os = require("os");
 const path = require("path");
@@ -31,6 +34,31 @@ function realpathDeepest(p) {
   return p;
 }
 
+// Narrow tripwire: does this Bash command obviously write the working tree? Conservative,
+// defaults to allow — false positives are worse than the documented miss list. It deliberately
+// does NOT catch: no-space redirects (echo x>f), `>|`, $VAR/~ targets, cp/mv/dd, or
+// python -c open(...) — tightening those would false-positive on arithmetic like $((a>b)).
+// git checkout/restore and read-only commands stay allowed.
+function bashLooksLikePlanWrite(command) {
+  const cmd = String(command || "");
+  // Drop quoted spans first so a literal ">" inside quotes doesn't count. Kept simple and
+  // non-recursive so a multi-MB hostile string can't overflow the regex stack; a stray
+  // apostrophe in an unquoted word can still mis-pair (an accepted, tested miss).
+  const unquoted = cmd.replace(/'[^']*'|"[^"]*"/g, " ");
+  const obviousWritePatterns = [
+    // redirect to a file (>, >>, &>) after start/space/separator; exempt fd-dups (2>&1),
+    // /dev/null, NUL. Target must be a literal path/word (so > $VAR and > ~ slip — accepted).
+    /(?:^|[\s;&|])(?:\d?>|>>|&>)\s*(?!&?\d\b|\/dev\/null\b|NUL\b)(?:\.{0,2}[\\/]|[A-Za-z]:[\\/]|[A-Za-z0-9_.][A-Za-z0-9_.-]*)/i,
+    // tee writing to a file (skipping flags); /dev/null and NUL exempt.
+    /(?:^|[\s;&|])tee\s+(?:-[A-Za-z]+\s+)*(?!\/dev\/null\b|NUL\b)(?:\.{0,2}[\\/]|[A-Za-z]:[\\/]|[A-Za-z0-9_.][A-Za-z0-9_.-]*)/i,
+    // sed in place: bare -i, -i<suffix> (e.g. -i.bak), or --in-place, within the sed arg span.
+    /(?:^|[\s;&|])sed\b(?=[^;&|]*\s(?:-[A-Za-z]*i[\w.-]*|--in-place\b))/i,
+    // git apply that actually applies — exempt dry-run/report-only flags.
+    /(?:^|[\s;&|])git\s+apply\b(?![^;&|]*\s--(?:check|stat|numstat|summary)\b)/i
+  ];
+  return obviousWritePatterns.some((re) => re.test(unquoted));
+}
+
 let raw = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("error", () => process.exit(0));
@@ -44,11 +72,12 @@ process.stdin.on("end", () => {
     const input = JSON.parse(raw || "{}");
     const tool = input.tool_name || "";
     const mode = input.permission_mode || input.permissionMode || "";
-    const blocked = tool === "Write" || tool === "Edit" || tool === "MultiEdit" || tool === "NotebookEdit";
-
     const ti = input.tool_input || {};
+    const editBlocked = tool === "Write" || tool === "Edit" || tool === "MultiEdit" || tool === "NotebookEdit";
+    const bashBlocked = tool === "Bash" && bashLooksLikePlanWrite(ti.command);
+
     const targetPath = ti.file_path || ti.path || ti.notebook_path || "";
-    let isPlanFile = false;
+    let isPlanFile = false; // only relevant for structured edits to ~/.claude/plans
     if (targetPath) {
       try {
         let resolved = path.resolve(String(targetPath));
@@ -59,15 +88,17 @@ process.stdin.on("end", () => {
       } catch (e) { isPlanFile = false; }
     }
 
-    debug("tool=" + tool + " mode=" + mode + " blocked=" + blocked + " isPlanFile=" + isPlanFile);
+    const deny = (editBlocked && !isPlanFile) || bashBlocked;
+    debug("tool=" + tool + " mode=" + mode + " editBlocked=" + editBlocked + " bashBlocked=" + bashBlocked + " isPlanFile=" + isPlanFile);
 
-    if (mode === "plan" && blocked && !isPlanFile) {
+    if (mode === "plan" && deny) {
       const out = {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "deny",
-          permissionDecisionReason:
-            "udflow plan gate: file modifications are blocked while in plan mode. Present the plan via ExitPlanMode and get approval before implementing."
+          permissionDecisionReason: bashBlocked
+            ? "udflow plan gate: this Bash command looks like a working-tree write (>, tee, sed -i, git apply), so it is blocked while in plan mode. This is a best-effort heuristic — if the command is read-only, writes outside the working tree (e.g. to /tmp), or a dry run, present the plan via ExitPlanMode and run it after approval, or adjust it. Only obvious writes are caught, not all Bash."
+            : "udflow plan gate: file modifications are blocked while in plan mode. Present the plan via ExitPlanMode and get approval before implementing."
         }
       };
       debug("DENY");

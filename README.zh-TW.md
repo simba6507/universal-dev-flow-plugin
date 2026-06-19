@@ -159,7 +159,7 @@ udflow> [離開 plan mode] 現在才真的改 checkout.tsx ✓
 
 兩個誠實的邊界:
 - **它是全域的。** hook 在每個 session 都跑,所以就算你在一個**跟 udflow 無關的專案**進了 plan mode,那邊的改檔也會被擋——它不知道「這次」是不是 udflow 任務。
-- **Bash 會溜過去。** hook 看得到結構化編輯工具(Write/Edit/MultiEdit/NotebookEdit),但看不到 `Bash`,所以 plan mode 下 `echo "x" > app.ts`、`sed -i` 可能改到檔。udflow 規則禁止規劃期間用 Bash 改工作樹,但那是約定、不是 hook。
+- **Bash 只擋一部分。** hook 會擋結構化編輯工具,以及*明顯的* Bash 寫入(`>`/`>>` 到檔、`tee`、`sed -i`、`git apply`),但刻意放行唯讀 Bash,也擋不到非明顯寫入(例如 `python -c "open(...,'w')"`)。把這個 tripwire 當安全網就好——udflow 規則仍禁止規劃期間用任何 Bash 改工作樹。
 
 ### 失敗記憶
 

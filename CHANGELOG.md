@@ -3,6 +3,16 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.0]
+
+Closes the documented plan-gate Bash gap with a narrow, low-false-positive tripwire (informed by an independent cross-model second opinion from Codex, then trimmed for usability).
+
+### Added
+- **Plan gate now also blocks *obvious* Bash working-tree writes** in plan mode: redirect-to-file (`>`, `>>`, `&>`), `tee` to a file, `sed -i` (including `-i.bak` and `--in-place`), and `git apply` (dry-run flags `--check`/`--stat`/`--numstat`/`--summary` are exempt — they write nothing). `Bash` is added to the `PreToolUse` matcher; the check (`bashLooksLikePlanWrite`) strips quoted strings first and **defaults to allow** — it deliberately does **not** block read-only Bash, `git checkout`/`git restore` (branch navigation), `/dev/null` / `NUL` redirects, or fd dups like `2>&1`. It is a safety net for the common cases, **not** full shell classification: by design it also lets no-space redirects (`echo x>f`), `>|`, and `$VAR`/`~` targets through, because tightening those would false-positive on arithmetic like `$((a>b))` — false positives are ranked worse than a documented miss. The workflow rule against Bash tree-writes during planning remains the real guarantee. Bash denials get a distinct, honest reason message (names the heuristic and the ExitPlanMode escape hatch). Covered by new behavioral tests including a documented-miss block that pins the intentional boundary.
+
+### Changed
+- README (EN/zh), `SKILL.md`, `implementer.md`, and `external-capabilities.md` updated from "Bash slips past it / not covered" to the accurate "obvious Bash writes are blocked; it's a narrow tripwire, not complete enforcement."
+
 ## [0.7.2]
 
 Follow-ups surfaced by a `--deep` (deterministic-Workflow) dogfood review; all minor, no behavior change.

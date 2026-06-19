@@ -169,6 +169,82 @@ test("Read is never gated", () => {
   assert.strictEqual(gate({ tool_name: "Read", permission_mode: "plan", tool_input: { file_path: "/x/y.ts" } }), "ALLOW");
 });
 
+test("Bash tripwire: obvious working-tree writes are denied in plan mode", () => {
+  for (const command of [
+    "echo hello > out.txt",
+    "echo more >> log.md",
+    "cat a b &> merged.txt",
+    "cat a &>> merged.txt",          // &>> append-both
+    "printf x | tee notes.txt",
+    "printf x | tee -a notes.txt",   // tee -a (flag-skip path)
+    "sed -i 's/a/b/' src/app.ts",
+    "sed -i.bak 's/a/b/' app.ts",    // -i<suffix> (dominant GNU/BSD form)
+    "sed --in-place 's/a/b/' app.ts",// GNU long form
+    "git apply fix.patch",
+    "echo x > out.txt 2>&1",         // real file redirect alongside a fd dup
+    "   echo x > f",                 // leading whitespace (the ^ branch)
+    "cat a >> OUTPUT.TXT",           // uppercase path (case-insensitive)
+    "echo x > src/out.txt",          // redirect to a path with a directory
+    "ls; echo x > f",                // redirect in the second chained command
+    "git status; git apply fix.patch", // git apply mid-chain after ;
+    "ls && git apply p.patch",       // git apply after &&
+  ]) {
+    assert.strictEqual(gate({ tool_name: "Bash", permission_mode: "plan", tool_input: { command } }), "DENY", `should block: ${command}`);
+  }
+});
+
+test("Bash tripwire: read-only / benign commands are allowed in plan mode", () => {
+  for (const command of [
+    "git status",
+    "git diff HEAD~1",
+    "git log --oneline -20",
+    "git checkout main",            // branch nav — intentionally NOT blocked (usability)
+    "git restore --staged .",       // intentionally NOT blocked
+    "git apply --check fix.patch",  // dry run — writes nothing, exempt
+    "git apply --stat fix.patch",   // report-only, exempt
+    "ls -la src",
+    "cat package.json",
+    "rg --files",
+    "grep -n 'foo > bar' app.ts",   // '>' is a quoted arg to grep, not a redirect
+    "sed -n 'p' app.ts",            // sed without -i is read-only
+    "node --check hooks/plan-gate.js",
+    "echo hi > /dev/null",          // /dev/null excluded
+    "ls 2>&1 | grep x",             // fd dup, not a file write
+  ]) {
+    assert.strictEqual(gate({ tool_name: "Bash", permission_mode: "plan", tool_input: { command } }), "ALLOW", `should allow: ${command}`);
+  }
+});
+
+test("Bash tripwire: only fires in plan mode (a write is allowed outside plan)", () => {
+  assert.strictEqual(gate({ tool_name: "Bash", permission_mode: "default", tool_input: { command: "echo x > out.txt" } }), "ALLOW");
+});
+
+test("Bash tripwire: documented conservative misses stay allowed (boundary is intentional)", () => {
+  // These can write but are deliberately NOT caught — tightening would add false positives
+  // (e.g. arithmetic $((a>b))), which the design ranks as worse than a documented miss.
+  // The workflow rule (no Bash tree-writes while planning) is the real guarantee, not this gate.
+  for (const command of [
+    "echo x>f",                     // no-space redirect glued to a word char
+    "echo data>>app.log",           // no-space append
+    "echo x >| forced.txt",         // >| noclobber-override redirect
+    'echo x > "out file.txt"',      // quoted target stripped before the redirect match
+    "echo x > $OUT",                // variable redirect target
+    "echo can't > a.txt won't",     // paired word-internal apostrophes erase the redirect
+  ]) {
+    assert.strictEqual(gate({ tool_name: "Bash", permission_mode: "plan", tool_input: { command } }), "ALLOW", `documented miss should stay allowed: ${command}`);
+  }
+});
+
+test("Bash tripwire: a quoted redirection target is a literal, not a real write", () => {
+  assert.strictEqual(gate({ tool_name: "Bash", permission_mode: "plan", tool_input: { command: "echo 'value > threshold'" } }), "ALLOW");
+});
+
+test("Bash tripwire: the deny reason names the heuristic and the escape hatch", () => {
+  const out = runHook(GATE, { tool_name: "Bash", permission_mode: "plan", tool_input: { command: "sed -i 's/a/b/' app.ts" } });
+  assert.match(out, /"deny"/);
+  assert.match(out, /best-effort|ExitPlanMode/, "bash deny reason should be actionable");
+});
+
 test("malformed stdin fails open (no deny, no crash)", () => {
   const out = cp.execFileSync("node", [GATE], { input: "not json {{{" }).toString();
   assert.strictEqual(out.trim(), "");
@@ -177,7 +253,7 @@ test("malformed stdin fails open (no deny, no crash)", () => {
 test("hooks.json PreToolUse matcher actually covers every gated tool", () => {
   const hj = JSON.parse(fs.readFileSync(path.join(HOOKS, "hooks.json"), "utf8"));
   const matcher = hj.hooks.PreToolUse[0].matcher;
-  for (const tool of ["Write", "Edit", "MultiEdit", "NotebookEdit"]) {
+  for (const tool of ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"]) {
     assert.ok(new RegExp(`^(?:${matcher})$`).test(tool), `${tool} must be in the matcher (else the gate never fires for it)`);
   }
 });

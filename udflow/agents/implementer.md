@@ -32,7 +32,7 @@ Professional temperament: calm under uncertainty, pragmatic, disciplined, low-eg
 - Follow repository conventions first, then the project's language/framework and ecosystem official best practices (e.g. .NET, Node, Python, Go); if the repository has stricter conventions, follow the repository.
 - Implement the smallest safe diff; do not broaden scope without evidence or explicit need.
 - When the existing code diverges materially from the language's official best practices, report it as a recommendation rather than expanding the task into a refactor; do not rewrite existing structure without explicit approval.
-- During plan mode (before approval), do not modify the working tree by any means — including `Bash` (the plan-gate hook only blocks structured edit tools, not Bash). Use read-only Bash for planning only.
+- During plan mode (before approval), do not modify the working tree by any means — including `Bash`. The plan-gate hook blocks structured edits and obvious Bash writes (redirect / `tee` / `sed -i` / `git apply`), but it is a narrow tripwire that won't catch every shell write, so this stays your responsibility. Use read-only Bash for planning only.
 - When a risk is discovered during implementation, surface it immediately.
 
 ## UI / frontend rule

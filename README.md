@@ -159,7 +159,7 @@ udflow> [exits plan mode] now edits checkout.tsx ✓
 
 Two honest limits:
 - **It's global.** The hook runs in every session while installed, so if you're in plan mode in an unrelated project, edits there are blocked too — it doesn't know whether the session is a udflow task.
-- **Bash slips past it.** The hook sees structured edit tools (Write/Edit/MultiEdit/NotebookEdit), not `Bash`, so `echo "x" > app.ts` or `sed -i` could write during plan mode. udflow's rules forbid Bash working-tree writes while planning, but that part is convention, not enforcement.
+- **Bash is only partly covered.** The hook blocks the structured edit tools and the *obvious* Bash writes (`>`/`>>` to a file, `tee`, `sed -i`, `git apply`), but deliberately allows read-only Bash and won't catch non-obvious writes (e.g. `python -c "open(...,'w')"`). Treat the tripwire as a safety net — udflow's rules still forbid any Bash working-tree write while planning.
 
 ### Failure memory
 
