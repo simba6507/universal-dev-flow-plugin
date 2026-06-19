@@ -9,7 +9,7 @@
 
 > 一句話:讓 Claude Code 在改程式碼前先把計劃攤開給你核准,實作後再由一組合適的審查員把關,最後由 gatekeeper 給出「能不能交付」的裁決——而不是寫完就說「好了」。
 
-> **狀態:early / experimental(早期/實驗性)。** 兩個 hook 有測試;多代理編排是 prompt 驅動、仍在真實 repo 上驗證中。請當成有紀律的鷹架。
+> **狀態:early / experimental(早期/實驗性)。** hook 有測試;多代理編排是 prompt 驅動、仍在真實 repo 上驗證中。請當成有紀律的鷹架。
 
 ---
 
