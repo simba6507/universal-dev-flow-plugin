@@ -164,6 +164,28 @@ Steps 1–2 run in plan mode; the plan is presented via ExitPlanMode and **`impl
 
 If the runtime can't switch modes programmatically, udflow proceeds read-only by discipline and discloses that the hook isn't enforcing this session. For a hard, every-session guarantee, set a default plan mode in your own `~/.claude/settings.json` or the project's `.claude/settings.json` (the plugin does not force it).
 
+**What it looks like:**
+
+```
+you> add a promo-code field to the checkout page
+udflow> [enters plan mode] tries to edit checkout.tsx → ✗ blocked ("udflow plan gate")
+        → plans instead, presents the plan via ExitPlanMode
+you> approve
+udflow> [exits plan mode] now edits checkout.tsx ✓
+```
+
+**The gate is global** — the hook runs in *every* session while the plugin is installed, so if you're in plan mode in a totally unrelated project, your edits there are blocked too (until you leave plan mode). It doesn't know whether "this session" is a udflow task.
+
+**Bash slips past it.** The hook sees structured edit tools but not `Bash`, so in plan mode:
+
+```
+Write app.ts            → blocked
+echo "x" > app.ts       → slips through (it's Bash; the gate can't see it)
+sed -i 's/a/b/' app.ts  → slips through
+```
+
+udflow's rules forbid Bash working-tree writes during planning, but that's convention, not the hook.
+
 ---
 
 ## Failure memory
@@ -178,6 +200,10 @@ udflow records "execution abnormalities that blocked, disrupted, or forced repai
 1. **Startup digest (automatic, via hook).** The `SessionStart` hook (`udflow/hooks/load-failure-memory.js`) runs on every start/resume/clear and injects a **condensed digest** — each entry's title + prevention rule + tags, newest first, capped — using **project first → global fallback**. It's a small index, not the whole file; if neither file exists it skips silently. (Files that don't follow the template fall back to an entry-aware excerpt of the newest content.)
 2. **Targeted recall (during planning).** Once the task is known, the workflow searches the file for entries relevant to the affected files / area / language / `Tags` and reads those full entries — so only relevant lessons surface, not the entire history or a blind dump.
 3. **Consolidation (keeps the file small).** Size is controlled by merging duplicates, folding recurrences, and pruning obsolete entries — by entry count, not by truncation. The startup cap is only a safety net.
+
+**What it looks like:**
+- Your project has `ai/FAILURE_MEMORY.md` with 3 lessons → on the next session start the digest is injected, so Claude begins already aware of them and avoids repeating them.
+- No such file (project or global) → the hook does nothing, silently, with no error.
 
 ### Write (driven by the workflow, routed by the lesson's nature)
 
