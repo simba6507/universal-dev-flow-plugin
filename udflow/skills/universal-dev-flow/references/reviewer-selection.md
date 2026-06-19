@@ -56,6 +56,7 @@ Use `gatekeeper` after selected reviewers finish.
 - Low risk: narrow behavior change, no contracts, no security boundary, no UI. Use core reviewers plus `code-reviewer` if code changed.
 - Medium risk: shared behavior, data flow, UI workflow, background behavior, or config changes. Add the directly relevant conditional reviewers.
 - High risk: auth/authz, schema or migration, destructive operations, cross-module orchestration, deployment/rollback, external integration, or ambiguous user-facing UX. Add all directly relevant conditional reviewers and pause for user input when product or release safety depends on the answer.
+- **Correctness-critical logic** — parsing, numeric / encoding / overflow handling, concurrency, security or trust boundaries, data integrity, or any path with non-obvious edge cases — gets **at least two independent lenses** (not a lone reviewer), since single-reviewer recall on subtle defects is low and a second lens recovers defects the first rationalizes as fine (see *Recall vs precision*).
 
 ## Repair Loop
 

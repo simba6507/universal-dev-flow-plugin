@@ -3,6 +3,17 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.1]
+
+Structural fixes targeting the **solvable** causes of the misses found in the v0.9.0 cross-language benchmark (the lesson there: structure moves recall, prose does not). Language-neutral.
+
+### Changed
+- **Verification gate now requires exercising the change's risky edge inputs** (`verification-gate.md`): for behavior-changing code, add/run a focused test that feeds the boundary inputs the change implies — empty / zero / overflow / large, multibyte / non-ASCII, null / empty / duplicate / multiple values, malformed input, by-value vs receiver use, concurrency — and assert the result. A test that reproduces the boundary is the oracle a static read lacks; it is what catches the subtle idiom/encoding/overflow/omission bugs reviewers rationalize as "looks fine." Targets the top miss causes (no spec-oracle, invisible omissions, subtle language semantics).
+- **Correctness-critical logic gets ≥2 independent lenses** (`reviewer-selection.md` risk matrix): parsing, numeric/encoding/overflow handling, concurrency, security/trust, data integrity, or any non-obvious-edge path is no longer reviewed by a lone reviewer — single-reviewer recall on subtle defects is low and a second lens recovers them (validated by the Round 2 panel re-test).
+- **Reviewers must enumerate, not stop at the first finding** (`reviewer-common.md` + `review-packet.md`): a single pass surfaces only the most salient defect; finding one real issue is not grounds to conclude the rest is correct.
+
+Honest note: the panel-default is validated by the benchmark's Round 2 re-test (a panel recovered misses a lone reviewer flatly missed); the edge-test requirement is reasoned from the miss analysis (a boundary test deterministically exposes the missed bugs) rather than re-benchmarked, since the blind code-review harness reviews code, not generated tests. No hook behavior change.
+
 ## [0.9.0]
 
 Outcome of a cross-language blind benchmark (6 languages / 6 external repos / 32 real bugs; recorded in `EVIDENCE.md`). The changes are **language-neutral** by design — they target failure modes seen across C#, JS, Python, Java, Go, and Rust, never one language.

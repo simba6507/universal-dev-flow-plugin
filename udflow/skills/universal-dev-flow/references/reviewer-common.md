@@ -27,6 +27,7 @@ These reduce real misses without inviting noise — every rule is gated on a con
 - **Rate severity by impact, not by how established the code looks.** Once you have a concrete failure case, set severity from its consequence (data loss / security / crash / wrong result ⇒ `blocker`/`major`). Do not downgrade a demonstrated defect to `minor` just because the code is old, common, or "accepted".
 - **Look for omissions, not only wrong lines.** Compare what the code does against what its name, signature, docstring, and the requirement imply it must do, and flag what is missing — an unhandled case, a cleanup that should pair with a create/delete, a guard/limit/validation the contract requires, a value (length, default, header) that should be set. Anchor every omission finding to that implied contract; do not speculate beyond it.
 - **Reason in the target language's real semantics.** Evaluate the code under how this language actually handles truthiness/equality, value-vs-reference (and receiver) semantics, string/byte/encoding distinctions, ownership/lifetimes, and numeric overflow — not as generic pseudocode.
+- **Enumerate; do not stop at the first finding.** A single pass tends to surface only the most salient defect. Keep scanning the whole scope for additional independent defects — finding one real issue is not a reason to conclude the rest is correct.
 
 ## Shared output contract
 

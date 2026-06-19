@@ -53,6 +53,7 @@ Shared reviewer contract:
 - Rate severity by the impact of that failure case (data loss / security / crash / wrong result ⇒ `blocker`/`major`); do not downgrade a demonstrated defect to `minor` just because the code looks established or "accepted".
 - Look for omissions, not only wrong lines: compare behavior to what the name/signature/docstring/requirement imply, and flag what is missing (unhandled case, cleanup that should pair with a create/delete, a required guard/limit/validation, a value like length/default/header that should be set) — anchored to that implied contract, not speculation.
 - Reason in the target language's real semantics (truthiness/equality, value-vs-reference and receiver semantics, string/byte/encoding, ownership/lifetimes, numeric overflow), not as generic pseudocode.
+- Enumerate; do not stop at the first finding — finding one real issue is not a reason to conclude the rest of the scope is correct.
 - Output at least: scope reviewed; findings by severity with exact file/method/contract/component/path evidence and the smallest safe fix; recommended corrections.
 ```
 
