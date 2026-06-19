@@ -3,6 +3,19 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.1]
+
+A pragmatic dogfood-review follow-up (udflow reviewing its own 0.7.0): usability-weighted fixes, no new complexity.
+
+### Changed
+- **README restructured for onboarding.** Quick start and the example transcript now come first; the wall of caveats is collapsed into a short "What you're opting into" and the deep-dive (plan gate, failure memory, deep mode, cost table, external capabilities) moved under a single "Advanced" section. The status banner is tightened (honest, not self-discouraging), and the plan-gate/Bash caveat is stated once instead of three times. Same honesty, far less to read before installing.
+- **Docs corrected to match the shipped hooks:** the READMEs now say **three** hooks (the 0.7.0 `orchestration-check` Stop hook was missing from the count and the Components list). Deep mode (`/udflow:run --deep`) is now documented.
+- **`orchestration-check` is now conservative:** it only warns when a `READY` verdict is asserted **and none** of the core panel agents appear in the transcript — eliminating false reminders on correct sessions without adding any transcript-format machinery.
+
+### Added
+- A junction-based test (EPERM-skip-guarded) for the plan-gate symlink/realpath exemption, and a "panel partially ran → stay silent" test for `orchestration-check`.
+- CI prevention: `validate-structure.mjs` now asserts every hook wired in `hooks.json` is named in `README.md`, so a future hook can't ship with stale docs.
+
 ## [0.7.0]
 
 A large honesty + hardening pass from a fresh-eyes multi-agent review (all findings A–M), plus native plan-mode integration and an optional ultracode/Workflow deep mode.

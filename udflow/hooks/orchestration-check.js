@@ -47,12 +47,16 @@ process.stdin.on("end", () => {
       } catch (e) {}
     }
     const assertsReady = /\bREADY\b/.test(finalText) && /verdict|gatekeeper|readiness/i.test(finalText);
-    const missing = REQUIRED.filter((n) => !ran.has(n));
-    debug("assertsReady=" + assertsReady + " ran=[" + [...ran].join(",") + "] missing=[" + missing.join(",") + "]");
+    debug("assertsReady=" + assertsReady + " ran=[" + [...ran].join(",") + "]");
 
-    if (assertsReady && missing.length) {
-      const msg = "udflow: a READY verdict was asserted but these agents did not run as independent subagents this session: " +
-        missing.join(", ") + ". A self-review is not a formal multi-agent review — either run the panel (spec-reviewer, test-reviewer, gatekeeper) or downgrade to FIX REQUIRED and disclose it as local self-review.";
+    // Conservative on purpose: only warn when a READY verdict is asserted AND NONE of the
+    // core panel agents appear anywhere in the transcript (high-confidence "panel clearly
+    // never ran"). This avoids false reminders if the real transcript serializes subagents
+    // under a shape this scan doesn't match — a fail-open advisory must not cry wolf.
+    if (assertsReady && ran.size === 0) {
+      const msg = "udflow: a READY verdict was asserted but none of the core review panel " +
+        "(spec-reviewer, test-reviewer, gatekeeper) appears to have run as a subagent this session. " +
+        "A self-review is not a formal multi-agent review — run the panel, or downgrade to FIX REQUIRED and disclose it as local self-review.";
       return process.stdout.write(JSON.stringify({ systemMessage: msg }), () => process.exit(0));
     }
   } catch (e) { debug("error: " + (e && e.message)); }

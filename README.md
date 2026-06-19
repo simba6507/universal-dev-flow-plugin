@@ -5,43 +5,17 @@
 **English** · [繁體中文](README.zh-TW.md)
 
 A risk-proportional, plan-gated multi-agent engineering workflow.
-Understand → plan → **approve** → implement → verify → selected review → gatekeeper readiness verdict, with failure memory and optional external capabilities.
-
-> **Status: early / experimental.** The two session hooks are tested; the orchestration is model-followed prose, and its value has not yet been measured against alternatives on external repos. Treat it as a disciplined scaffold, not a proven quality gate.
+Understand → plan → **approve** → implement → verify → selected review → gatekeeper readiness verdict.
 
 > In one line: udflow makes Claude Code lay out a plan and get your approval before it changes code, then has the right specialist reviewers check the work, and finishes with a gatekeeper verdict on whether it's shippable — instead of just saying "done."
 
----
-
-## Good to know (read before installing)
-
-What you're opting into:
-
-- **It uses more tokens than a normal chat.** One task can spawn the `implementer`, several reviewers, and the `gatekeeper`, and `security-reviewer` + `gatekeeper` run on `opus`. Expect noticeably higher token/cost usage than a one-shot edit, and reviewers are chosen by risk so simple tasks cost less. See the rough per-run estimate below.
-- **`opus` access:** `security-reviewer` and `gatekeeper` request `opus`; if your account/session can't use it, those steps fall back to the available model and verdict quality may vary.
-- **The plan-gate guarantee depends on plan mode.** The read-only enforcement is a hook that only fires while you're in plan mode. udflow drives Claude Code's native plan mode itself for its planning phase (so the gate is live even if your default mode isn't plan); if the runtime can't switch modes programmatically, it proceeds read-only by discipline and **tells you** the hook isn't enforcing this session. For a hard guarantee, set a default plan mode in your settings. Note the gate covers **structured edit tools (Write/Edit/MultiEdit/NotebookEdit) only — not `Bash`**, so a shell write could bypass it; udflow's rules forbid Bash working-tree writes during planning, but that part is convention, not enforcement.
-- **Installing adds hooks that run in *every* session — not only on udflow tasks:**
-  - `plan-gate` (PreToolUse) is invisible during normal work; it only blocks structured edits while in plan mode (Claude Code's own plan files are exempt, so the native plan flow still works).
-  - `load-failure-memory` (SessionStart) reads your recorded past-mistake notes at the start of every session and injects a short **digest** so Claude avoids repeating them; if there is no such file, it does nothing.
-- **It writes files.** The workflow may create `ai/FAILURE_MEMORY.md` in your repo (a new `ai/` folder) and `~/.claude/FAILURE_MEMORY.md` in your home directory. Decide whether to commit `ai/FAILURE_MEMORY.md` or add it to `.gitignore`.
-- **Codex is off by default (opt-in).** udflow does **not** use Codex unless you explicitly ask for it in a task (e.g. say to use Codex when stuck). When you enable it, it *may* — on a stuck fix — delegate one independent diagnosis to **Codex**, which runs an **external (OpenAI) model** and sends the relevant code/context to a **third party**, at **extra cost**. If you don't enable it (or it isn't installed), udflow never calls it and does not error.
-- **It can engage on its own — and you can stop it.** udflow auto-starts for non-trivial engineering work even if you don't call `/udflow:run`, and stays out of trivial edits and plain Q&A. For cost control: the repair loop has a hard cap (a Stuck Summary after the same blocker persists two iterations, not unbounded), it asks before escalating to a deeper/opus-heavy pass, and you can run it manual-only by simply not describing engineering tasks in plain language and invoking `/udflow:run` when you want it.
-
-**Rough cost per run** (ballpark from real runs — varies a lot by task size, risk, and number of fix iterations; treat as orders of magnitude, not guarantees):
-
-| Task | Reviewers | Tokens | Wall-clock |
-|------|-----------|--------|------------|
-| Light | core only | ~100–250k | a few min |
-| Typical | 3–5 + one repair pass | ~300–700k | ~5–15 min |
-| Deep | several repair loops | >1M | 20–40 min |
-
-`opus` reviewers and extra fix iterations raise both; running reviewers in parallel shortens wall-clock.
+> **Status: early / experimental.** The hooks are tested; the multi-agent orchestration is prompt-driven and still being validated on real repos. Treat it as a disciplined scaffold.
 
 ---
 
 ## Quick start
 
-Prerequisites: **Claude Code** installed, and **Node.js on your PATH** (the two hooks are Node scripts — verify with `node --version`). If Node is missing, the hooks silently no-op: the plan gate won't fire and failure memory won't inject.
+Prerequisites: **Claude Code**, and `node --version` must work (the hooks are Node scripts — with no Node on PATH they silently do nothing).
 
 **1. 🪟 In your terminal, go to your project and launch Claude Code**
 
@@ -54,15 +28,13 @@ Prerequisites: **Claude Code** installed, and **Node.js on your PATH** (the two 
     /plugin install udflow@kktmarketplace
     /reload-plugins
 
-> The first line adds the marketplace by its GitHub `owner/repo`; the second installs the `udflow` plugin from that marketplace, whose name is `kktmarketplace` (the `name` field in `marketplace.json`, not the repo name). They differ on purpose.
+> The marketplace's name is `kktmarketplace` (not the repo name), so install is `udflow@kktmarketplace`.
 
 **3. 🤖 Hand it a task**
 
     /udflow:run Fix the login flow so it refreshes when the token expires
 
 You can also just describe the task in plain language — udflow takes over automatically when it judges the work to be non-trivial engineering.
-
-It then runs: understand → plan → present via **ExitPlanMode** for your approval → implement only after approval → verify → review → `gatekeeper` verdict. udflow enters plan mode for its planning phase so structured edits are blocked until you approve (or, if the runtime can't switch modes, it proceeds read-only by discipline and tells you the hook isn't enforcing — see [Good to know](#good-to-know-read-before-installing)).
 
 > **Stays out of the way for small stuff.** udflow only engages for non-trivial engineering work; trivial edits and plain Q&A are left alone. Want to force the full workflow on anything? Use `/udflow:run`.
 
@@ -79,23 +51,8 @@ Custom marketplaces do **not** auto-update, so run `marketplace update` manually
 
 - **Install failed / can't find the plugin** — confirm the marketplace name: `/plugin marketplace list` should show `kktmarketplace`. Install is `udflow@kktmarketplace`, not `udflow@<repo>`.
 - **Is the plan gate actually live?** Enter plan mode and ask Claude to edit a file — it should be blocked with a "udflow plan gate" message. If it isn't, the hook isn't firing (see next item).
-- **Nothing seems to happen / gate never blocks** — check `node --version`. With no Node on PATH the hooks no-op silently. For deeper insight, set `UDFLOW_HOOK_DEBUG=1` in your environment to make the hooks write a trace (stderr / temp file); unset, they stay silent.
+- **Nothing seems to happen / gate never blocks** — check `node --version`. With no Node on PATH the hooks no-op silently. For deeper insight, set `UDFLOW_HOOK_DEBUG=1` to make the hooks write a trace (stderr / temp file); unset, they stay silent.
 - **opus unavailable** — `security-reviewer` and `gatekeeper` fall back to the available model and say so in their output; verdict confidence may be lower.
-
----
-
-## How it works
-
-```
-understand → plan (plan mode) → you approve → implement → verify → selected review → gatekeeper verdict
-                                                                  ↑________ repair loop ________↓
-```
-
-- **Understand / plan** happen in plan mode (read-only); the plan is presented via ExitPlanMode for your approval.
-- **Only after approval** does the `implementer` write code.
-- **Verify** runs build / test / lint / typecheck / browser evidence as applicable.
-- **Review** selects only the reviewers relevant to this change's risk (no ceremony).
-- **gatekeeper** returns `READY` / `FIX REQUIRED` / `NOT READY`; if a fix is needed it enters a repair loop until ready or clearly blocked.
 
 ---
 
@@ -132,6 +89,31 @@ Three things worth remembering:
 
 ---
 
+## What you're opting into
+
+- **More tokens than a normal chat.** A task spawns the `implementer`, the risk-selected reviewers, and the `gatekeeper` (two of them on `opus`). Rough cost for typical work: a few minutes and ~100–700k tokens; simple tasks cost less. Full table under [Cost per run](#cost-per-run).
+- **Three always-on hooks, invisible during normal work** — a plan-mode write gate, failure-memory injection at session start, and a best-effort orchestration check at session end. They run in *every* session while the plugin is installed (not only udflow tasks); with no Node they no-op. Details under [Plan gate](#plan-gate) and [Failure memory](#failure-memory).
+- **It writes failure-memory files** — `ai/FAILURE_MEMORY.md` in your repo and `~/.claude/FAILURE_MEMORY.md` at home (commit the project one or add it to `.gitignore`).
+- **External models are off unless you ask** — Codex and MCP are opt-in; udflow runs standalone otherwise, and discloses any gap.
+- **It can engage on its own — and you can stop it.** It auto-starts for non-trivial engineering work; to keep it manual-only, just don't describe engineering tasks in plain language and call `/udflow:run` when you want it. The repair loop has a hard cap (Stuck Summary after the same blocker persists two iterations) and asks before any deeper/opus-heavy pass.
+
+---
+
+## How it works
+
+```
+understand → plan (plan mode) → you approve → implement → verify → selected review → gatekeeper verdict
+                                                                  ↑________ repair loop ________↓
+```
+
+- **Understand / plan** happen in plan mode (read-only); the plan is presented via ExitPlanMode for your approval.
+- **Only after approval** does the `implementer` write code.
+- **Verify** runs build / test / lint / typecheck / browser evidence as applicable.
+- **Review** selects only the reviewers relevant to this change's risk (no ceremony).
+- **gatekeeper** returns `READY` / `FIX REQUIRED` / `NOT READY`; if a fix is needed it enters a repair loop until ready or clearly blocked.
+
+---
+
 ## Components
 
 The plugin lives in the [`udflow/`](udflow/) subdirectory (only that subdir is installed; `test/`, `.github/`, and `package.json` stay at the repo root and are not shipped).
@@ -139,7 +121,10 @@ The plugin lives in the [`udflow/`](udflow/) subdirectory (only that subdir is i
 - `udflow/skills/universal-dev-flow/` — the auto-invoked orchestrator (with `references/`).
 - `udflow/skills/run/` — manual entry point: `/udflow:run <task>`.
 - `udflow/agents/` — 9 subagents: `implementer` (writes) + 7 read-only reviewers + `gatekeeper`. `security-reviewer` and `gatekeeper` run on `opus`; the rest inherit the current session model.
-- `udflow/hooks/` — `plan-gate.js` (PreToolUse: blocks writes while in plan mode, but exempts Claude Code's own plan files under `~/.claude/plans/` so it doesn't interfere with the native plan flow) and `load-failure-memory.js` (SessionStart: injects FAILURE_MEMORY). Both are Node scripts, so they behave the same on Windows PowerShell, macOS, and Linux.
+- `udflow/hooks/` — three Node hooks (same behavior on Windows, macOS, Linux; all fail-open):
+  - `plan-gate.js` (PreToolUse) — blocks structured edits while in plan mode, exempting Claude Code's own plan files under `~/.claude/plans/`.
+  - `load-failure-memory.js` (SessionStart) — injects a failure-memory digest.
+  - `orchestration-check.js` (Stop) — best-effort, non-blocking: warns if a `READY` verdict is claimed without the review panel actually running.
 - `udflow/.mcp.json` — empty by default (zero context cost). `udflow/mcp.example.json` is a copy-in template.
 
 ### The 9 subagents
@@ -158,13 +143,11 @@ The plugin lives in the [`udflow/`](udflow/) subdirectory (only that subdir is i
 
 ---
 
-## Plan gate (approve before any change)
+## Advanced
 
-Steps 1–2 run in plan mode; the plan is presented via ExitPlanMode and **`implementer` only runs after approval**. udflow enters plan mode for its planning phase, so the PreToolUse hook enforces read-only (for Write/Edit/MultiEdit/NotebookEdit — not `Bash`) even when your default mode isn't plan. The hook exempts Claude Code's own plan files so it never blocks the native plan flow.
+### Plan gate
 
-If the runtime can't switch modes programmatically, udflow proceeds read-only by discipline and discloses that the hook isn't enforcing this session. For a hard, every-session guarantee, set a default plan mode in your own `~/.claude/settings.json` or the project's `.claude/settings.json` (the plugin does not force it).
-
-**What it looks like:**
+The read-only enforcement is a hook that **only fires while you're in plan mode**. udflow drives Claude Code's native plan mode itself for its planning phase, so the gate is live even when your default mode isn't plan. If the runtime can't switch modes programmatically, udflow proceeds read-only by discipline and **discloses** that the hook isn't enforcing this session; for a hard, every-session guarantee, set a default plan mode in `~/.claude/settings.json` or the project's `.claude/settings.json` (the plugin doesn't force it).
 
 ```
 you> add a promo-code field to the checkout page
@@ -174,59 +157,41 @@ you> approve
 udflow> [exits plan mode] now edits checkout.tsx ✓
 ```
 
-**The gate is global** — the hook runs in *every* session while the plugin is installed, so if you're in plan mode in a totally unrelated project, your edits there are blocked too (until you leave plan mode). It doesn't know whether "this session" is a udflow task.
+Two honest limits:
+- **It's global.** The hook runs in every session while installed, so if you're in plan mode in an unrelated project, edits there are blocked too — it doesn't know whether the session is a udflow task.
+- **Bash slips past it.** The hook sees structured edit tools (Write/Edit/MultiEdit/NotebookEdit), not `Bash`, so `echo "x" > app.ts` or `sed -i` could write during plan mode. udflow's rules forbid Bash working-tree writes while planning, but that part is convention, not enforcement.
 
-**Bash slips past it.** The hook sees structured edit tools but not `Bash`, so in plan mode:
+### Failure memory
 
-```
-Write app.ts            → blocked
-echo "x" > app.ts       → slips through (it's Bash; the gate can't see it)
-sed -i 's/a/b/' app.ts  → slips through
-```
+udflow records "execution abnormalities that blocked, disrupted, or forced repair of the intended method" as plain Markdown, so future sessions read past lessons on startup. Two files (either or both): project `ai/FAILURE_MEMORY.md`, global `~/.claude/FAILURE_MEMORY.md`.
 
-udflow's rules forbid Bash working-tree writes during planning, but that's convention, not the hook.
+- **Startup digest (automatic).** The SessionStart hook injects a condensed digest (each entry's title + prevention rule + tags, newest first, capped) — project first → global fallback. It's a small index, not the whole file; injected content is fenced as untrusted reference data. No file → nothing happens.
+- **Targeted recall (during planning).** The workflow retrieves the full entries relevant to the affected files / area / language / `Tags` — only relevant lessons surface.
+- **Writes** are routed by the lesson's nature (project-specific → project, cross-project → global, both → both), always rereading the global file first to merge instead of duplicating, and performed by a single writer (the main thread / `gatekeeper`) to avoid concurrent corruption. Size is kept down by consolidation, not truncation. A filled-in example: [`udflow/examples/FAILURE_MEMORY.sample.md`](udflow/examples/FAILURE_MEMORY.sample.md).
 
----
+### Deep mode (opt-in)
 
-## Failure memory
+Prefix a task with `--deep` (e.g. `/udflow:run --deep <task>`) — or work in a session where an ultracode/Workflow capability is on — to run the **same** selected reviewers more rigorously: the panel and gatekeeper run as a deterministic Workflow (so the panel actually runs), blocker/major findings get adversarial verification, and the highest-leverage agents run at higher effort. **Depth, not more reviewers.** It's off by default, never a hard dependency, and falls back silently to the standard flow (with disclosure) if the capability isn't available.
 
-udflow records "execution abnormalities that blocked, disrupted, or forced repair of the intended method" as plain Markdown, so future sessions read past lessons on startup. It uses two files (either or both):
+### Cost per run
 
-- Project-level: `ai/FAILURE_MEMORY.md`
-- Global: `~/.claude/FAILURE_MEMORY.md`
+Ballpark from real runs — varies a lot by task size, risk, and number of fix iterations; treat as orders of magnitude, not guarantees:
 
-### How it's loaded and used (three stages)
+| Task | Reviewers | Tokens | Wall-clock |
+|------|-----------|--------|------------|
+| Light | core only | ~100–250k | a few min |
+| Typical | 3–5 + one repair pass | ~300–700k | ~5–15 min |
+| Deep | `--deep`, several repair loops | >1M | 20–40 min |
 
-1. **Startup digest (automatic, via hook).** The `SessionStart` hook (`udflow/hooks/load-failure-memory.js`) runs on every start/resume/clear and injects a **condensed digest** — each entry's title + prevention rule + tags, newest first, capped — using **project first → global fallback**. It's a small index, not the whole file; if neither file exists it skips silently. (Files that don't follow the template fall back to an entry-aware excerpt of the newest content.)
-2. **Targeted recall (during planning).** Once the task is known, the workflow searches the file for entries relevant to the affected files / area / language / `Tags` and reads those full entries — so only relevant lessons surface, not the entire history or a blind dump.
-3. **Consolidation (keeps the file small).** Size is controlled by merging duplicates, folding recurrences, and pruning obsolete entries — by entry count, not by truncation. The startup cap is only a safety net.
+`opus` reviewers and extra fix iterations raise both; running reviewers in parallel shortens wall-clock.
 
-**What it looks like:**
-- Your project has `ai/FAILURE_MEMORY.md` with 3 lessons → on the next session start the digest is injected, so Claude begins already aware of them and avoids repeating them.
-- No such file (project or global) → the hook does nothing, silently, with no error.
-
-### Write (driven by the workflow, routed by the lesson's nature)
-
-The write target depends on **what kind of lesson it is**, not a fixed order:
-
-- **Project-specific** lesson (only relevant to this repo) → `ai/FAILURE_MEMORY.md`.
-- **Cross-project** lesson (tooling, process, reviewer coordination — applies elsewhere too) → `~/.claude/FAILURE_MEMORY.md`.
-- **Both apply** → write the project file and also update the global file when the prevention rule is reusable across repos.
-- `gatekeeper` decides whether an entry is needed: prefer the project file when it exists/applies, otherwise the global file.
-
-Whichever side it writes, it **rereads the global `~/.claude/FAILURE_MEMORY.md` first** to merge with a similar existing entry (marking recurrences) instead of creating scattered duplicates. A filled-in example lives at [`udflow/examples/FAILURE_MEMORY.sample.md`](udflow/examples/FAILURE_MEMORY.sample.md).
-
-> In one line: **read = a small digest at startup + targeted recall during planning (project-first, global-fallback); write = routed by the lesson's nature (project-specific → project, general → global, both → both), always rereading global first; size is kept down by consolidation, not truncation.**
-
----
-
-## Optional external capabilities (Detect → Use → Else-Disclose)
+### Optional external capabilities (Detect → Use → Else-Disclose)
 
 MCP tools, external subagents, and external skills are all **optional**. If present, they're used; if absent, the work is done locally and the gap is disclosed. See `udflow/skills/universal-dev-flow/references/external-capabilities.md`.
 
 - **MCP per reviewer**: disabled by default. To enable, copy a server from `udflow/mcp.example.json` into `udflow/.mcp.json`, then uncomment the matching `mcp__*` line in that reviewer's `tools:`. Keep reviewers read-only.
-- **ui-ux-pro-max**: if the `ui-ux-pro-max` skill is installed, udflow uses it first for UI design decisions and in `ui-ux-reviewer`; otherwise it falls back to built-in guidance and discloses that.
-- **Codex (second opinion / rescue)**: **off by default** — used only when you explicitly enable it for a task. When enabled and installed, udflow may delegate an independent diagnosis on a stuck fix (Detect → Use → Else-Disclose). It is optional, never a hard dependency, and sends code/context to an external (OpenAI) model at extra cost (see the disclosure above). If not enabled or not installed, udflow continues locally without error.
+- **ui-ux-pro-max**: if the `ui-ux-pro-max` skill is installed, udflow uses it first for UI design decisions; otherwise it falls back to a built-in baseline and discloses that.
+- **Codex (second opinion / rescue)**: **off by default** — only when you explicitly enable it for a task. When enabled and installed, udflow may delegate one independent diagnosis on a stuck fix; it sends code/context to an external (OpenAI) model at extra cost. If not enabled or not installed, udflow continues locally without error.
 
 ---
 

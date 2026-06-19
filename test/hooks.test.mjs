@@ -113,6 +113,31 @@ test("home ~/.claude/plans path IS exempt (allowed in plan mode)", () => {
   assert.strictEqual(gate({ tool_name: "Write", permission_mode: "plan", tool_input: { file_path: homePlan } }), "ALLOW");
 });
 
+test("plan-gate: a junction under ~/.claude/plans whose target escapes is NOT exempt (denied)", (t) => {
+  // realpathDeepest must resolve a symlink/junction so a "plans"-named link can't redirect
+  // a write outside the exemption. Uses a junction (no admin needed on Windows); EPERM-skip.
+  const plansDir = path.join(os.homedir(), ".claude", "plans");
+  let link;
+  try {
+    fs.mkdirSync(plansDir, { recursive: true });
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-escape-"));
+    link = path.join(plansDir, "udflow-test-junction-" + process.pid);
+    fs.symlinkSync(target, link, "junction");
+  } catch (e) {
+    return t.skip("cannot create a junction here: " + (e && e.code));
+  }
+  try {
+    const escaped = path.join(link, "escaped.ts"); // resolves to <target>/escaped.ts, outside plans
+    assert.strictEqual(
+      gate({ tool_name: "Write", permission_mode: "plan", tool_input: { file_path: escaped } }),
+      "DENY",
+      "a junction whose target escapes ~/.claude/plans must not be exempt"
+    );
+  } finally {
+    try { fs.rmSync(link, { recursive: true, force: true }); } catch (e) {}
+  }
+});
+
 test("normal file write is denied in plan mode, allowed otherwise", () => {
   const f = path.join(os.tmpdir(), "proj", "src", "app.ts");
   assert.strictEqual(gate({ tool_name: "Write", permission_mode: "plan", tool_input: { file_path: f } }), "DENY");
@@ -219,13 +244,13 @@ function orch(input) {
   return out.trim() ? JSON.parse(out) : null;
 }
 
-test("orchestration-check warns when READY is asserted but the panel did not run", () => {
+test("orchestration-check warns when READY is asserted and NO panel agent ran", () => {
   const tp = mkTranscript([
     { role: "user", content: "do the thing" },
     { role: "assistant", content: "Final verdict: READY — readiness confirmed." },
   ]);
   const r = orch({ transcript_path: tp });
-  assert.ok(r && /did not run as independent subagents/.test(r.systemMessage), "expected a non-blocking reminder");
+  assert.ok(r && /none of the core review panel/.test(r.systemMessage), "expected a non-blocking reminder");
   assert.ok(!r.decision, "must not block the stop");
 });
 
@@ -235,6 +260,15 @@ test("orchestration-check stays silent when the panel ran", () => {
     { role: "assistant", content: [{ type: "tool_use", name: "Task", input: { subagent_type: "udflow:test-reviewer" } }] },
     { role: "assistant", content: [{ type: "tool_use", name: "Task", input: { subagent_type: "udflow:gatekeeper" } }] },
     { role: "assistant", content: "Final verdict: READY — readiness confirmed." },
+  ]);
+  assert.strictEqual(orch({ transcript_path: tp }), null);
+});
+
+test("orchestration-check is conservative: silent if ANY panel agent ran", () => {
+  // Only one of the three ran — conservative detection must NOT cry wolf.
+  const tp = mkTranscript([
+    { role: "assistant", content: [{ type: "tool_use", name: "Task", input: { subagent_type: "udflow:spec-reviewer" } }] },
+    { role: "assistant", content: "Final verdict: READY." },
   ]);
   assert.strictEqual(orch({ transcript_path: tp }), null);
 });

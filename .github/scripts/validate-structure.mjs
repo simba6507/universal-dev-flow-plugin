@@ -114,9 +114,20 @@ if (fs.existsSync(path.join(root, skillRel))) {
 const hooksRel = `${PLUGIN}/hooks/hooks.json`;
 if (fs.existsSync(path.join(root, hooksRel))) {
   const hooksText = fs.readFileSync(path.join(root, hooksRel), "utf8");
-  for (const m of new Set((hooksText.match(/hooks\/[a-z0-9-]+\.js/gi) || []))) {
+  const wiredHooks = new Set((hooksText.match(/hooks\/[a-z0-9-]+\.js/gi) || []));
+  for (const m of wiredHooks) {
     if (!fs.existsSync(path.join(root, `${PLUGIN}/${m}`)))
       fail(`hooks.json references a missing hook: ${m}`);
+  }
+  // Prevention (a real lesson: a hook shipped without updating the docs): every wired
+  // hook must be named in README.md so the docs can't silently fall out of sync.
+  const readmePath = path.join(root, "README.md");
+  if (fs.existsSync(readmePath)) {
+    const readme = fs.readFileSync(readmePath, "utf8");
+    for (const m of wiredHooks) {
+      const base = m.replace(/^hooks\//, "").replace(/\.js$/, "");
+      if (!readme.includes(base)) fail(`README.md does not mention the hook "${base}" (docs out of sync with hooks.json)`);
+    }
   }
 }
 
