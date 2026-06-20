@@ -3,6 +3,14 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.5]
+
+Sharper external-capability disclosure: don't mislabel an installed-but-failing capability as "not installed". Prompt/docs only — no hook or reviewer behavior change, language-neutral.
+
+### Changed
+- **Distinguish "absent" from "present-but-failed-to-execute"** (`external-capabilities.md`): a capability that is installed/detected but then fails when invoked (runtime / sandbox / permission / auth / process-spawn error) is disclosed as "detected but could not execute (reason)" with a pointer at config / auth / sandbox — **not** as "not installed", and not by relaying a tool's "run the installer" message when the tool is actually present. Relaying a false "not installed" sends the user to a useless reinstall and hides the real fix.
+- **Concrete Codex case documented:** if `codex` is installed but fails to run (e.g. a Windows `CreateProcessAsUserW` / spawn error from `[windows] sandbox = "elevated"` in `~/.codex/config.toml`, or an auth problem), disclose it as "Codex detected but could not execute" and point at `~/.codex/config.toml` / `codex login` — do not report "`@openai/codex` not installed" or suggest `npm install` when the CLI is present. (Came from a real run where a sandbox `CreateProcessAsUserW` failure was surfaced to the user as "not installed".)
+
 ## [0.9.4]
 
 User-facing communication now follows the user's language. Prompt/docs only — no hook or reviewer behavior change, fully language-neutral (language-adaptive, not biased to any one language).
