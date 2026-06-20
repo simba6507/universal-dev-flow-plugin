@@ -132,7 +132,7 @@ shape:
 - **Caught — the headline save:** a **BLOCKER that green build + tests missed** — a case-mismatch (`bit` vs `BIT`) between a SQL rollback script's confirmation-guard literal and the PowerShell deploy script that string-matches it; the match is **case-sensitive**, so the guard would always throw and **the rollback could never run**. spec + operability + security each surfaced it independently. (The external Codex verifier was blocked this run by a Windows-sandbox issue and contributed nothing — **udflow's own panel caught the blocker without it**.) Plus a minor: a cross-file casing-lock test added.
 - **False alarms: 0** (udflow reviewers).
 - **External-capability note (disclosed, not a udflow defect):** the external Codex verifier could not execute (Windows sandbox `CreateProcessAsUserW` failure) — the gap was disclosed and udflow continued; the panel still caught the blocker. Root-caused and fixed before the next run. No build-server / zombie / pipe-EOF incident in this session.
-- **Outcome:** committed and **merged to `main`** (PR #7; commit `cb6c70f7` → merge `c37d41b7`). User accepted all findings. Long-term hold-up beyond merge: pending follow-up confirmation.
+- **Outcome after follow-up: held up** — committed, **merged to `main`, and still in (not reverted)** — maintainer-confirmed. User accepted all findings.
 - **Cost:** gatekeeper subagent ~34K tokens / ~3.4 min; part of a ~3.5 h multi-run session. · **Evidence:** private repo — commits `cb6c70f7` / merge `c37d41b7` (internal index, not publicly linkable).
 
 ### Live run 3 — 2026-06-20 · private C#/.NET file-transfer system · verified live task (merged)
@@ -146,7 +146,7 @@ shape:
   - **Reviewer-conflict adjudication:** Codex raised a BLOCKER (a permission guard reusing a stale snapshot on DB-reload failure = "fail-open"); the gatekeeper read the code and **downgraded it to intentional fail-static design** (it reuses a previously-valid deny-list and never widens permissions) — accepted, no change. A conflict resolved by **code evidence, not by vote**.
   - Five residual-risk hardenings shipped (resource disposal on connect failure, a cancellation race, circuit-breaker counting of cancellations, a startup index-validation guard, a lock around a CTS swap).
 - **False alarms: 0 confirmed** (the Codex "fail-open" blocker was a defensible-but-wrong reading, adjudicated on evidence; udflow reviewers clean).
-- **Outcome:** committed and **merged to `main`** (PR #8; commit `2beafbbb` → merge `153e559d`). User accepted findings; this run is what prompted updating the evidence log. Long-term hold-up: pending follow-up confirmation.
+- **Outcome after follow-up: held up** — committed, **merged to `main`, and still in (not reverted)** — maintainer-confirmed (PR #8; commit `2beafbbb` → merge `153e559d`). This run is what prompted updating the evidence log.
 - **Cost:** gatekeeper subagent ~29K tokens / ~2.6 min; part of the same ~3.5 h session. · **Evidence:** private repo — commits `2beafbbb` / merge `153e559d` (internal index).
 
 _More runs needed for Track 2 — especially at least one **not** by the maintainer, and breadth beyond this one
