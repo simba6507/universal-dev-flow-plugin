@@ -97,8 +97,9 @@ Custom marketplaces do **not** auto-update, so run `marketplace update` manually
 
 ### Troubleshooting
 
-- **Install failed / can't find the plugin** — confirm the marketplace name: `/plugin marketplace list` should show `kktmarketplace`. Install is `udflow@kktmarketplace`, not `udflow@<repo>`.
+- **Install failed / can't find the plugin** — the marketplace is named **`kktmarketplace`**, not the repo name, so the install id is **`udflow@kktmarketplace`** (not `udflow@universal-dev-flow-plugin`). Confirm with `/plugin marketplace list`. Claude Code's own "not found" message is built in and can't be customized by the plugin, so this name mismatch is the usual cause.
 - **Is the plan gate actually live?** Enter plan mode and ask Claude to edit a file — it should be blocked with a "udflow plan gate" message. If it isn't, the hook isn't firing (see next item).
+- **Plan gate blocking a project you don't want it in?** Set `"udflow": { "planGate": false }` in that project's `.claude/settings.json` to opt it out; the gate stays on in every other project.
 - **Nothing seems to happen / gate never blocks** — check `node --version`. With no Node on PATH the hooks no-op silently. For deeper insight, set `UDFLOW_HOOK_DEBUG=1` to make the hooks write a trace (stderr / temp file); unset, they stay silent.
 - **opus unavailable** — `security-reviewer` and `gatekeeper` fall back to the available model and say so in their output; verdict confidence may be lower.
 
@@ -208,7 +209,7 @@ udflow> [exits plan mode] now edits checkout.tsx ✓
 ```
 
 Two honest limits:
-- **It's global.** The hook runs in every session while installed, so if you're in plan mode in an unrelated project, edits there are blocked too — it doesn't know whether the session is a udflow task.
+- **It's global — but a project can opt out.** The hook runs in every session while installed, so if you're in plan mode in an unrelated project, edits there are blocked too (it can't tell whether the session is a udflow task). To turn the plan gate off for one project, set `"udflow": { "planGate": false }` in that project's `.claude/settings.json` (or `.claude/settings.local.json`, which takes precedence); the gate stays on everywhere else. A missing or malformed setting keeps the gate **on** (fail-safe), so a broken config can never silently drop the guard.
 - **Bash is only partly covered.** The hook blocks the structured edit tools and the *obvious* Bash writes (`>`/`>>` to a file, `tee`, `sed -i`, `perl -i`, `truncate`, `dd of=`, `ln`, `git apply`), but deliberately allows read-only Bash and won't catch non-obvious writes — notably interpreter one-liners (`node -e "fs.writeFileSync(...)"`, `python -c "open(...,'w')"`) and `xargs`-driven writes. Treat the tripwire as a safety net, not a guarantee — udflow's rules still forbid any Bash working-tree write while planning, and a default plan mode in settings is the hard guard.
 
 ### Plan grounding (high-risk)
@@ -227,9 +228,14 @@ udflow records "execution abnormalities that blocked, disrupted, or forced repai
 - **Targeted recall (during planning).** The workflow retrieves the full entries relevant to the affected files / area / language / `Tags` — only relevant lessons surface.
 - **Writes** are routed by the lesson's nature (project-specific → project, cross-project → global, both → both), always rereading the global file first to merge instead of duplicating, and performed by a single writer (the main thread / `gatekeeper`) to avoid concurrent corruption. Size is kept down by consolidation, not truncation. A filled-in example: [`udflow/examples/FAILURE_MEMORY.sample.md`](udflow/examples/FAILURE_MEMORY.sample.md).
 
-### Deep mode (opt-in)
+### Deep mode
 
-Prefix a task with `--deep` (e.g. `/udflow:run --deep <task>`) — or work in a session where an ultracode/Workflow capability is on — to run the **same** selected reviewers more rigorously: the panel and gatekeeper run as a deterministic Workflow (so the panel actually runs), blocker/major findings get adversarial verification, and the highest-leverage agents run at higher effort. **Depth, not more reviewers.** It's off by default, never a hard dependency, and falls back silently to the standard flow (with disclosure) if the capability isn't available.
+udflow's deterministic Workflow comes in two tiers:
+
+- **Tier 1 — enforcement (may auto-engage).** On **high-risk / correctness-critical** work, when your session has a Workflow/ultracode capability, udflow runs the **same** selected reviewers and gatekeeper as a deterministic Workflow — so the panel *actually* runs and gatekeeper only runs after it, instead of trusting the model to self-orchestrate. Same reviewers, same effort, so cost ≈ a normal run. It's **opt-out**: pass `--no-deep` (or `--shallow`), or just run in a session without the capability.
+- **Tier 2 — deeper verification (opt-in).** Prefix a task with `--deep` (e.g. `/udflow:run --deep <task>`) to *additionally* give blocker/major findings adversarial verification and run the highest-leverage agents at maximum effort. This raises tokens/time, so it stays explicit opt-in.
+
+**Depth, not more reviewers** — reviewer *selection* is identical in both tiers. Honest limit: the deterministic guarantee only exists in a **Workflow-capable session**; without that capability the panel still runs but is model-orchestrated (and udflow discloses that). Never a hard dependency.
 
 ### Cost per run
 
@@ -250,11 +256,16 @@ Cost driver: **≈ context/repo size × turns × number of subagents.** `opus` r
 
 ### Optional external capabilities (Detect → Use → Else-Disclose)
 
-MCP tools, external subagents, and external skills are all **optional**. If present, they're used; if absent, the work is done locally and the gap is disclosed. See `udflow/skills/universal-dev-flow/references/external-capabilities.md`.
+MCP tools, external subagents, and external skills are all **optional**. If present, they're used; if absent, the work is done locally and the gap is disclosed.
 
-- **MCP per reviewer**: disabled by default. To enable, copy a server from `udflow/mcp.example.json` into `udflow/.mcp.json`, then uncomment the matching `mcp__*` line in that reviewer's `tools:`. Keep reviewers read-only.
 - **ui-ux-pro-max**: if the `ui-ux-pro-max` skill is installed, udflow uses it first for UI design decisions; otherwise it falls back to a built-in baseline and discloses that.
-- **Codex (second opinion / rescue)**: **off by default** — only when you explicitly enable it for a task. When enabled and installed, udflow may delegate one independent diagnosis on a stuck fix; it sends code/context to an external (OpenAI) model at extra cost. If not enabled or not installed, udflow continues locally without error.
+- **MCP per reviewer** and **Codex** (cross-model second opinion / rescue) are both **off by default** and opt-in. Their setup, the read-only MCP-to-reviewer mapping, and Codex's data-egress disclosure are in **[`docs/advanced/external-capabilities.md`](docs/advanced/external-capabilities.md)** (reader guide) — udflow's own operational rules live in the shipped [`references/external-capabilities.md`](udflow/skills/universal-dev-flow/references/external-capabilities.md).
+
+---
+
+## Project status & maintenance
+
+udflow is **early / experimental** and **solo-maintained** (one author, in spare time). It's dogfooded on real work, but it has a short track record and a **bus factor of one** — weigh that before depending on it for release gating. Issues and PRs are welcome and read, but response time is best-effort, not guaranteed. The most valuable contribution is a **[verified run report](.github/ISSUE_TEMPLATE/verified-run.yml)** — see [`CONTRIBUTING.md`](CONTRIBUTING.md) and the evidence log in [`EVIDENCE.md`](EVIDENCE.md).
 
 ---
 

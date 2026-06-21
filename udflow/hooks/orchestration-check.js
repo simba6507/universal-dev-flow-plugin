@@ -30,22 +30,37 @@ function lastVerdict(text) {
   return last;
 }
 
+// Language-neutral "the final message asserts a READY verdict". READY / FIX REQUIRED / NOT READY
+// and the severity labels blocker/major/minor are machine-checked literals kept verbatim in every
+// language (SKILL.md, Language And Text Integrity), so this still fires on a localized summary
+// whose surrounding prose — including the English words "verdict" / "gatekeeper" / "readiness" —
+// is translated. Requires >=2 distinct severity labels (the formal Findings section always lists
+// blocker/major/minor) so a bare incidental "READY" can't trip it. Without this, a non-English
+// summary ("最終裁決：READY") matched neither branch and both advisories below went silent.
+function assertsReadyVerdict(text) {
+  if (!/\bREADY\b/.test(text)) return false;
+  if (/verdict|gatekeeper|readiness/i.test(text)) return true;
+  const sev = new Set((text.match(/\b(?:blocker|major|minor)s?\b/ig) || [])
+    .map((s) => s.toLowerCase().replace(/s$/, "")));
+  return sev.size >= 2;
+}
+
 // Does the final message claim the work is finished/shippable? Broader than a formal verdict so
 // it catches an orchestrator that drops the verdict token and just says "looks good, you're set"
 // — the exact way a blocking verdict gets quietly ignored. Safe to be generous here: the
 // verdict-not-honored warning also requires a real blocking verdict token to exist first.
 function claimsComplete(text) {
-  if (/\bREADY\b/.test(text) && /verdict|gatekeeper|readiness/i.test(text)) return true;
+  if (assertsReadyVerdict(text)) return true;
   return /\b(ready to (?:ship|merge|release|go)|good to go|all set|you'?re all set|ship it|shipped|is complete|is done|done!|all done|no (?:remaining |outstanding )?issues|safe to (?:ship|merge|release)|looks good)\b/i.test(text);
 }
 
 // A DELIBERATE ship/readiness decision — used to gate the panel-presence check, which (unlike
 // verdict-honoring) has no blocking-token precondition, so it must stay clear of casual "looks
-// good / done" to avoid crying wolf. Catches the formal verdict AND the lowercase / no-keyword
-// ship phrasings, closing the "drop the verdict word to dodge the check" gap without nagging
-// trivial completions.
+// good / done" to avoid crying wolf. Catches the formal verdict (in any language) AND the
+// lowercase / no-keyword ship phrasings, closing the "drop the verdict word to dodge the check"
+// gap without nagging trivial completions.
 function claimsShipReady(text) {
-  if (/\bREADY\b/.test(text) && /verdict|gatekeeper|readiness/i.test(text)) return true;
+  if (assertsReadyVerdict(text)) return true;
   return /\b(ready to (?:ship|merge|release)|cleared to (?:ship|merge|release)|safe to (?:ship|merge|release)|good to go|ship it|ready for (?:release|production|merge))\b/i.test(text);
 }
 
