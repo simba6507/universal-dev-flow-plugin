@@ -22,6 +22,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0   # full history + tags, for the version/tag consistency check
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
@@ -31,6 +33,21 @@ jobs:
       # agent/skill has frontmatter, and the shipped tree has no dev/runtime artifacts.
       - name: Validate plugin structure
         run: node .github/scripts/validate-structure.mjs
+
+      # Version/tag drift guard — the 5th axis on top of the file-level agreement that
+      # validate-structure.mjs enforces (plugin.json / marketplace / metadata /
+      # package.json / CHANGELOG). Warn-only: a version bump is committed BEFORE its tag
+      # is cut, so failing hard here would block every release commit.
+      - name: Version/tag consistency (warn-only)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          ver=$(node -p "require('./udflow/.claude-plugin/plugin.json').version")
+          if git rev-parse -q --verify "refs/tags/v$ver" >/dev/null; then
+            echo "OK: git tag v$ver matches manifest version $ver."
+          else
+            echo "::warning::manifest version is $ver but no git tag v$ver exists yet — tag the release: git tag v$ver && git push origin v$ver"
+          fi
 
       # The session hooks run on every session and fail open, so a syntax error
       # would otherwise be invisible. Syntax-check and behaviorally test them.
@@ -55,4 +72,8 @@ jobs:
         shell: bash
         run: |
           npm install -g @anthropic-ai/claude-code || exit 0
-          claude plugin validate . || echo "claude plugin validate could not run headless; the checks above are the gate."
+          # Validate BOTH the marketplace (repo root) and the shipped plugin (./udflow).
+          # The plugin manifest is in udflow/.claude-plugin/plugin.json, so validating
+          # only the root would never check the plugin itself.
+          claude plugin validate . || echo "marketplace validate could not run headless; the checks above are the gate."
+          claude plugin validate ./udflow || echo "plugin validate could not run headless; the checks above are the gate."

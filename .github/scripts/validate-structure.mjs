@@ -69,6 +69,13 @@ if (plugin && plugin.version) {
   }
 }
 
+// 3d. root package.json version agrees with the plugin version, so a bump can't
+// update the manifests but forget package.json (or vice-versa).
+const pkg = readJSON("package.json");
+if (pkg && plugin && pkg.version !== plugin.version) {
+  fail(`version mismatch: package.json ${pkg.version} vs plugin.json ${plugin.version}`);
+}
+
 // 4. hooks.json parses (if present)
 if (fs.existsSync(path.join(root, `${PLUGIN}/hooks/hooks.json`))) readJSON(`${PLUGIN}/hooks/hooks.json`);
 

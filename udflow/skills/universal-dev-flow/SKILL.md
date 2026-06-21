@@ -1,6 +1,6 @@
 ---
 name: universal-dev-flow
-description: Use for non-trivial software work needing implementation, verification, selected review, repair loops, or release-readiness judgment. Triggers: feature work, bug fixes, API or business-logic changes, test changes, behavioral refactors, frontend/UI changes, data-flow changes, production-quality validation. Do not use for simple factual Q&A, pure brainstorming with no implementation intent, or trivial edits with no meaningful verification need.
+description: "Use for non-trivial software work needing implementation, verification, selected review, repair loops, or release-readiness judgment. Triggers: feature work, bug fixes, API or business-logic changes, test changes, behavioral refactors, frontend/UI changes, data-flow changes, production-quality validation. Do not use for simple factual Q&A, pure brainstorming with no implementation intent, or trivial edits with no meaningful verification need."
 metadata:
   short-description: Risk-proportional engineering workflow (plan-gated)
 ---

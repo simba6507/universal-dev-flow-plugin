@@ -13,6 +13,11 @@ Adds a conditional, read-only **plan-grounding & intent-sharpening** step before
 ### Changed
 - `SKILL.md` (Reference Loading, Lifecycle step 2, Plan Gate step 4), `reviewer-selection.md` (new *Plan Grounding* trigger on the same risk gate), `review-packet.md` (populate intent/edge fields from the sharpened contract/checklist), `verification-gate.md` (edge inputs are pre-enumerated at plan time), and `deep-mode.md` (Stage A may run as a read-only Workflow node) updated to wire the step in. README (EN/zh) gained a *Plan grounding* note under Advanced.
 
+### Fixed
+- **`universal-dev-flow/SKILL.md` frontmatter `description` is now double-quoted** — the unquoted plain scalar contained a `: ` (in "Triggers: …"), which YAML disallows inside a plain scalar; lenient loaders accepted it but stricter validators (incl. `claude plugin validate`) may reject it. The string value is unchanged, so skill-triggering is identical.
+
+Note (repo tooling, not shipped): CI now runs `claude plugin validate ./udflow` (the plugin itself) in addition to the marketplace root; `validate-structure.mjs` also asserts the root `package.json` version agrees with the plugin/marketplace/metadata/CHANGELOG versions; and a warn-only CI step flags a manifest-version vs `git tag` mismatch (release-drift guard).
+
 ### Notes (why this is the right lever)
 - The cross-language benchmark (`EVIDENCE.md`) pins two facts this step is built on: omissions are the #1 miss (~36%), and the dominant recall lever is **contract-level intent in the Review Packet**, not more reviewers on the same content. Omissions originate at plan time and are cheapest to fix there; sharpening the intent before approval pushes exactly that lever. Risk-gated and read-only to stay consistent with udflow's risk-proportional, usability-over-strictness ethos.
 
