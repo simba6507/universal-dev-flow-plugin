@@ -139,7 +139,7 @@ Three things worth remembering:
 
 ## What you're opting into
 
-- **More tokens than a normal chat.** A task spawns the `implementer`, the risk-selected reviewers, and the `gatekeeper` (two of them on `opus`). Rough cost for typical work: a few minutes and ~100–700k tokens; simple tasks cost less. Full table under [Cost per run](#cost-per-run).
+- **More tokens than a normal chat.** A task spawns the `implementer`, the risk-selected reviewers, and the `gatekeeper` (two of them on `opus`). One task (implement → review → fix → gate) is typically a few minutes and a few million tokens of *actual work* (new tokens processed); the number you see in `/cost` is much larger, because the cached context is re-read every turn by every agent. Simple tasks cost less; multi-increment features stack several runs. Full breakdown under [Cost per run](#cost-per-run).
 - **Three always-on hooks, invisible during normal work** — a plan-mode write gate, failure-memory injection at session start, and a best-effort orchestration check at session end. They run in *every* session while the plugin is installed (not only udflow tasks); with no Node they no-op. Details under [Plan gate](#plan-gate) and [Failure memory](#failure-memory).
 - **It writes failure-memory files** — `ai/FAILURE_MEMORY.md` in your repo and `~/.claude/FAILURE_MEMORY.md` at home (commit the project one or add it to `.gitignore`).
 - **External models are off unless you ask** — Codex and MCP are opt-in; udflow runs standalone otherwise, and discloses any gap.
@@ -233,15 +233,20 @@ Prefix a task with `--deep` (e.g. `/udflow:run --deep <task>`) — or work in a 
 
 ### Cost per run
 
-Ballpark from real runs — varies a lot by task size, risk, and number of fix iterations; treat as orders of magnitude, not guarantees:
+Ballpark from our own runs — varies a lot by task size, risk, repo size, and number of fix iterations; treat as orders of magnitude, not guarantees. Two very different numbers matter:
 
-| Task | Reviewers | Tokens | Wall-clock |
-|------|-----------|--------|------------|
-| Light | core only | ~100–250k | a few min |
-| Typical | 3–5 + one repair pass | ~300–700k | ~5–15 min |
-| Deep | `--deep`, several repair loops | >1M | 20–40 min |
+- **New tokens** — tokens processed for the first time (input + cache-creation + output). This tracks the real work and is the stable figure to plan around.
+- **Billable total** — what `/cost` sums. It *also* counts cache-read tokens, which the cached context re-contributes on *every* turn of *every* agent, so it runs **~20–30× the new-token figure** (and grows with repo size and turn count). Cache reads bill at roughly a tenth of the input rate, so the dollar cost scales much closer to the new-token figure than that 20–30× multiple implies.
 
-`opus` reviewers and extra fix iterations raise both; running reviewers in parallel shortens wall-clock.
+| Task (one run) | Reviewers | New tokens | Wall-clock |
+|------|-----------|------------|------------|
+| Light | core only | ~0.5–2M | a few min |
+| Typical | 3–5 + one repair pass | ~2–7M | ~5–15 min |
+| Deep | `--deep`, several repair loops | >10M | 20–40 min |
+
+This table is **per run** — one `/udflow:run` that goes implement → review → fix → gate. A multi-increment feature stacks several runs: a full P0–P3 build in our own use came to **~47M new / ~1B billable tokens** across ~7 gate cycles and ~94 subagents over a day.
+
+Cost driver: **≈ context/repo size × turns × number of subagents.** `opus` reviewers, `--deep`, and extra repair loops multiply it; running reviewers in parallel shortens wall-clock but not token count.
 
 ### Optional external capabilities (Detect → Use → Else-Disclose)
 
