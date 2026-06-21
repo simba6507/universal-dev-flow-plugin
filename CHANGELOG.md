@@ -3,6 +3,23 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.10.0]
+
+Closes the external review's "claimed vs enforced" and "global footprint" gaps: deep mode splits into a cheap **Tier 1** that can auto-engage deterministic enforcement on high-risk work, the Stop hook's advisories now survive a non-English summary, and a project can opt **out** of the otherwise-global plan gate. Two single-file hook changes plus prompt/docs; defaults and reviewer selection are unchanged.
+
+### Added
+- **Plan-gate project opt-out** (`plan-gate.js`): a project can disable the plan gate for its own sessions by setting `"udflow": { "planGate": false }` in its `.claude/settings.json` (or `.claude/settings.local.json`, which takes precedence). The project dir is resolved from `CLAUDE_PROJECT_DIR`, falling back to the event `cwd`. **Fail-safe toward the gate**: a missing / oversized / malformed settings file, or any read error, keeps the gate **on** — a broken config can never silently drop the guard. Addresses the documented "it's global — blocks plan-mode edits even in unrelated projects" limit; default behavior is unchanged (the gate stays on unless a project opts out). New behavioral tests cover the opt-out, the local-override precedence, fail-safe on malformed config, and the `cwd` fallback.
+- **Deep mode Tier 1 / Tier 2 split** (`references/deep-mode.md`, wired into `SKILL.md`, `reviewer-selection.md`, `run/SKILL.md`): deterministic *enforcement* is separated from deeper *verification*. **Tier 1** (the selected panel as a Workflow `parallel` barrier, `gatekeeper` as a `pipeline` barrier — *same reviewers, same reasoning effort*) now **auto-engages on high-risk / correctness-critical work when a Workflow/ultracode capability is present** (opt-out via `--no-deep` / `--shallow`), because graph-enforced orchestration costs ≈ the standard flow. **Tier 2** (adversarial verification + loop-until-dry + maximum reasoning effort) stays **explicit opt-in** (`--deep`), honoring the Auto-fix loop's "confirm before an opus-heavy pass" cost rule. Reviewer *selection* is unchanged in both tiers. Honest bound: the deterministic guarantee exists only in Workflow-capable sessions; otherwise the panel still runs but is model-orchestrated (disclosed). Prompt/docs only — no new agent, and the hooks still never depend on deep mode.
+
+### Fixed
+- **Stop-hook advisories now survive a localized summary** (`orchestration-check.js`): both the verdict-not-honored and panel-missing advisories previously required an English prose word (`verdict` / `gatekeeper` / `readiness`) to recognize a READY assertion, so a non-English final summary ("最終裁決：READY …", made language-adaptive in v0.9.4) matched neither path and the checks went silent. Detection now also keys off the **verbatim machine tokens** — `READY` / `FIX REQUIRED` / `NOT READY` and the severity labels `blocker` / `major` / `minor`, which Language-And-Text-Integrity keeps literal in every language — requiring ≥2 distinct severity labels so a bare incidental "READY" still cannot cry wolf. New tests cover a zh-TW READY summary and a zh-TW completion that buries a `NOT READY` verdict.
+
+### Docs
+- README (EN/zh) reworked: the **Deep mode** section now describes the two tiers; the **Plan gate** limit and **Troubleshooting** document the project opt-out; the verbose **Codex** + per-reviewer **MCP** setup moved out of the README into a new reader guide `docs/advanced/external-capabilities.md` (the shipped `references/external-capabilities.md` stays the operational source of truth); the install-failure note states the `kktmarketplace`-vs-repo-name mismatch is the usual cause (Claude Code's own message can't be customized by a plugin); a new **Project status & maintenance** section discloses the solo-maintainer / early-stage status. Repo-root docs — not shipped.
+
+### Notes
+- All three hooks remain fail-open / fail-safe and non-blocking. The two behavioral changes (`plan-gate.js` opt-out, `orchestration-check.js` localization) are single-file and independently revertible; the deep-mode split is prompt/docs and language-neutral. Hook behavior tests extended accordingly (`test/hooks.test.mjs`).
+
 ## [0.9.9]
 
 Hardens the two session "tripwire" hooks against the gaps a security pass found — the gatekeeper's verdict now has an advisory guard, the review-panel check is no longer dodgeable by spawning one agent, and the plan-gate Bash net covers the non-redirect writers it previously missed. Advisory hooks stay advisory (a Stop hook cannot block); the structured-edit plan gate and the workflow discipline remain the real guarantees.

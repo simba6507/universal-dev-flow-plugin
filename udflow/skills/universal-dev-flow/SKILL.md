@@ -41,7 +41,7 @@ Keep `SKILL.md` as the lightweight entry point. Read these references only when 
 - `references/runtime-policy.md`: before using subagents, waiting on agents, or closing agents.
 - `references/verification-gate.md`: before verification, final delivery, or failure-memory updates.
 - `references/external-capabilities.md`: before using any MCP tool, external subagent, or external skill (including `ui-ux-pro-max` for UI work).
-- `references/deep-mode.md`: before running a deeper review (when an ultracode/Workflow deep mode is detected or explicitly opted in).
+- `references/deep-mode.md`: before expressing the panel as a deterministic Workflow — Tier-1 enforcement auto-engages on high-risk work when the Workflow capability is present (opt-out); Tier-2 deeper verification (adversarial checks, max effort) is explicit opt-in.
 
 Do not deep-chain references. All required workflow references are linked from this file.
 
@@ -123,7 +123,7 @@ When touching human-readable text, check for mojibake, replacement characters, b
 6. Parallel review
    - Run selected reviewers in parallel when possible and authorized.
    - If runtime or policy prevents subagent use, state that limitation and continue with local evidence without calling it formal multi-agent review.
-   - In a detected/opted-in deep mode, express the selected panel, the gatekeeper barrier, and the repair loop as a deterministic Workflow so the panel actually runs and gatekeeper only runs after reviewers; the reviewer *selection* is unchanged (still the smallest sufficient set). See `references/deep-mode.md`.
+   - **Prefer deterministic enforcement on high-risk work.** When the task is high-risk / correctness-critical and the Workflow capability is available, default to expressing the selected panel and the gatekeeper barrier as a deterministic Workflow (deep-mode **Tier 1**) so the panel actually runs and gatekeeper only runs after reviewers. Tier 1 is **opt-out** (`--no-deep`), uses the same reviewers at the same reasoning effort, and so does not change cost materially. The costlier checks (adversarial verification, maximum effort) are **Tier 2** and stay explicit opt-in (`--deep`). The reviewer *selection* is unchanged in either tier (still the smallest sufficient set). Without the Workflow capability, the panel still runs but is model-orchestrated rather than graph-enforced — disclose that. See `references/deep-mode.md`.
    - Read `references/runtime-policy.md` before spawning agents.
 
 7. Conflict resolution and gatekeeper
@@ -137,7 +137,7 @@ When touching human-readable text, check for mojibake, replacement characters, b
    - If verdict is `FIX REQUIRED` or `NOT READY`, fix concrete findings, rerun relevant verification, rerun only affected reviewers, rerun `gatekeeper`, and repeat until `READY` or clearly blocked.
    - If a fix introduces a new risk category, add the corresponding conditional reviewer.
    - **Iteration cap:** if the same blocker category persists across two consecutive iterations, produce a Stuck Summary and stop. This is a hard cap, not "loop until solved" — surface the blocker for the user rather than spending unbounded iterations/tokens.
-   - **Cost control:** before escalating to a deeper/opus-heavy pass, confirm with the user. To avoid unexpected spend, the workflow may be run manual-only (invoke `/udflow:run` explicitly and do not auto-engage) — see the cost note in the README. Before declaring stuck, only if the user explicitly enabled Codex for this task and it is available, you may escalate one independent diagnosis; otherwise (not enabled or unavailable) continue locally and disclose. Codex is off by default; a missing opt-in or absent capability must not error. See `references/external-capabilities.md`.
+   - **Cost control:** deep-mode **Tier 1** (deterministic panel / gatekeeper enforcement) adds no reasoning-effort increase and may auto-engage on high-risk work, so it needs no confirmation. But before escalating to a **deeper / opus-heavy pass** — deep-mode **Tier 2** (adversarial verification + maximum effort), or any opus-heavy escalation — confirm with the user. To avoid unexpected spend, the workflow may be run manual-only (invoke `/udflow:run` explicitly and do not auto-engage) — see the cost note in the README. Before declaring stuck, only if the user explicitly enabled Codex for this task and it is available, you may escalate one independent diagnosis; otherwise (not enabled or unavailable) continue locally and disclose. Codex is off by default; a missing opt-in or absent capability must not error. See `references/external-capabilities.md`.
 
 9. Final delivery
    - Follow the final output contract in `references/verification-gate.md`.

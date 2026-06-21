@@ -70,6 +70,40 @@ function bashLooksLikePlanWrite(command) {
   return obviousWritePatterns.some((re) => re.test(unquoted));
 }
 
+// Project opt-out (P2.2): a project may disable the plan gate for its OWN sessions by setting
+// "udflow": { "planGate": false } in its .claude/settings.json (or .claude/settings.local.json,
+// which takes precedence). The gate is otherwise global — it blocks plan-mode edits even in a
+// project unrelated to any udflow task — and this is the documented escape hatch. Resolve the
+// project dir from CLAUDE_PROJECT_DIR, falling back to the event's cwd. FAIL-SAFE toward the
+// safety net: a missing file, parse error, oversized config, or any read error counts as
+// "not disabled" (keep enforcing), so a broken settings file can never silently drop the gate.
+function planGateDisabledForProject(input) {
+  try {
+    const root = process.env.CLAUDE_PROJECT_DIR || (input && input.cwd) || "";
+    if (!root) return false;
+    for (const name of ["settings.local.json", "settings.json"]) { // local overrides project
+      const v = readPlanGateFlag(path.join(root, ".claude", name));
+      if (v === false) return true;  // explicitly disabled in the higher-precedence file -> allow
+      if (v === true) return false;  // explicitly enabled -> enforce (a lower file can't flip it back)
+      // undefined -> not set here; fall through to the lower-precedence file
+    }
+  } catch (e) {}
+  return false;
+}
+
+// Read udflow.planGate from a settings file: true/false when set, undefined otherwise (missing
+// file / not set / any error). Caps the read so a pathological settings file can't stall the hook.
+function readPlanGateFlag(file) {
+  try {
+    let size = 0;
+    try { size = fs.statSync(file).size; } catch (e) { return undefined; } // not present / unstatable
+    if (size > 1024 * 1024) return undefined;
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8"));
+    const v = cfg && cfg.udflow && cfg.udflow.planGate;
+    return v === false ? false : (v === true ? true : undefined);
+  } catch (e) { return undefined; }
+}
+
 let raw = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("error", () => process.exit(0));
@@ -108,6 +142,10 @@ process.stdin.on("end", () => {
     debug("tool=" + tool + " mode=" + mode + " editBlocked=" + editBlocked + " bashBlocked=" + bashBlocked + " isPlanFile=" + isPlanFile);
 
     if (mode === "plan" && deny) {
+      if (planGateDisabledForProject(input)) {
+        debug("plan gate disabled for this project (udflow.planGate=false); allowing");
+        return process.exit(0);
+      }
       const out = {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",

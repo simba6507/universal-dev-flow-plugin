@@ -33,7 +33,11 @@ function mkProject(memFile) {
   return dir;
 }
 function gate(input, env) {
-  const out = runHook(GATE, input, env);
+  // Hermetic by default: strip CLAUDE_PROJECT_DIR so the P2.2 project opt-out can't be toggled
+  // by the developer's ambient environment. Tests that exercise the opt-out pass an explicit env.
+  let e = env;
+  if (!e) { e = { ...process.env }; delete e.CLAUDE_PROJECT_DIR; }
+  const out = runHook(GATE, input, e);
   return out.includes('"deny"') ? "DENY" : "ALLOW";
 }
 // Isolate the home dir for tests that exercise the ~/.claude/plans exemption, so they
@@ -42,7 +46,9 @@ function isolatedHome() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-home-"));
   // os.homedir() reads HOME on POSIX but USERPROFILE on Windows — set both so the
   // isolation actually takes effect cross-platform.
-  return { home, env: { ...process.env, HOME: home, USERPROFILE: home } };
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  delete env.CLAUDE_PROJECT_DIR; // hermetic: don't let an ambient project opt-out (P2.2) leak in
+  return { home, env };
 }
 
 const TWO_ENTRIES_PLUS_PLACEHOLDER = `# FAILURE_MEMORY
@@ -314,6 +320,54 @@ test("plan-gate deny JSON is fully flushed even with a large payload", () => {
   assert.strictEqual(j.hookSpecificOutput.permissionDecision, "deny");
 });
 
+// --- plan-gate: project opt-out (P2.2) ---
+
+function mkProjectWithSettings(settings, opts = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-proj-"));
+  fs.mkdirSync(path.join(dir, ".claude"), { recursive: true });
+  const name = opts.local ? "settings.local.json" : "settings.json";
+  fs.writeFileSync(path.join(dir, ".claude", name),
+    typeof settings === "string" ? settings : JSON.stringify(settings), "utf8");
+  return dir;
+}
+function gateInProject(input, dir) {
+  return gate(input, { ...process.env, CLAUDE_PROJECT_DIR: dir });
+}
+const PLAN_WRITE = { tool_name: "Write", permission_mode: "plan", tool_input: { file_path: path.join(os.tmpdir(), "proj", "app.ts") } };
+
+test("plan-gate P2.2: udflow.planGate=false in settings.json allows in plan mode", () => {
+  const dir = mkProjectWithSettings({ udflow: { planGate: false } });
+  assert.strictEqual(gateInProject(PLAN_WRITE, dir), "ALLOW", "the opt-out must disable the gate for this project");
+});
+
+test("plan-gate P2.2: settings.local.json opt-out overrides settings.json", () => {
+  const dir = mkProjectWithSettings({ udflow: { planGate: true } });          // project: enforce
+  fs.writeFileSync(path.join(dir, ".claude", "settings.local.json"),
+    JSON.stringify({ udflow: { planGate: false } }), "utf8");                 // local: disable (higher precedence)
+  assert.strictEqual(gateInProject(PLAN_WRITE, dir), "ALLOW", "the local override must take precedence");
+});
+
+test("plan-gate P2.2: no flag still denies in plan mode (default enforce)", () => {
+  const dir = mkProjectWithSettings({ permissions: { allow: [] } });          // unrelated settings, no udflow key
+  assert.strictEqual(gateInProject(PLAN_WRITE, dir), "DENY", "an absent flag must keep the gate on");
+});
+
+test("plan-gate P2.2: planGate=true explicitly enforces (deny)", () => {
+  const dir = mkProjectWithSettings({ udflow: { planGate: true } });
+  assert.strictEqual(gateInProject(PLAN_WRITE, dir), "DENY");
+});
+
+test("plan-gate P2.2: malformed project settings fail safe to enforce (deny)", () => {
+  const dir = mkProjectWithSettings("{ not: valid json ");
+  assert.strictEqual(gateInProject(PLAN_WRITE, dir), "DENY", "a broken settings file must not silently drop the gate");
+});
+
+test("plan-gate P2.2: the opt-out resolves from the event cwd when CLAUDE_PROJECT_DIR is unset", () => {
+  const dir = mkProjectWithSettings({ udflow: { planGate: false } });
+  const env = { ...process.env }; delete env.CLAUDE_PROJECT_DIR;
+  assert.strictEqual(gate({ ...PLAN_WRITE, cwd: dir }, env), "ALLOW", "the cwd fallback must locate the project opt-out");
+});
+
 // --- load-failure-memory: nonce fence + role-marker neutralization (finding G) ---
 
 test("digest wraps the body in a per-run nonce fence with an untrusted-data warning", () => {
@@ -455,4 +509,40 @@ test("orchestration-check is silent with no transcript and fails open on garbage
   assert.strictEqual(orch({}), null);
   const out = cp.execFileSync("node", [ORCH], { input: "not json {{{" }).toString();
   assert.strictEqual(out.trim(), "");
+});
+
+// --- orchestration-check: localized (non-English) summaries (P1.2) ---
+// v0.9.4 makes the final summary follow the user's language, but the verdict tokens
+// (READY / FIX REQUIRED / NOT READY) and severity labels (blocker/major/minor) stay verbatim.
+// The advisories must key off those, not English prose words, or they go silent in a zh session.
+
+test("orchestration-check P1.2: a localized READY summary with severity labels still warns (no panel)", () => {
+  const tp = mkTranscript([
+    { role: "user", content: "做這件事" },
+    { role: "assistant", content: "最終裁決：READY。Blocker：無。Major：無。Minor：1（已修）。" },
+  ]);
+  const r = orch({ transcript_path: tp });
+  assert.ok(r && /none of the core review panel/.test(r.systemMessage),
+    "a localized READY + verbatim severity labels must still trip the panel check");
+});
+
+test("orchestration-check P1.2: a localized completion burying a NOT READY verdict still warns", () => {
+  // Higher-value check: gatekeeper returned NOT READY (verbatim), but the zh final asserts READY.
+  const tp = mkTranscript([
+    { role: "assistant", content: [{ type: "tool_use", name: "Task", input: { subagent_type: "udflow:gatekeeper" } }] },
+    { role: "user", content: [{ type: "tool_result", content: "Final verdict: NOT READY — 未解的權限繞過。" }] },
+    { role: "assistant", content: "完成了：最終裁決 READY。Blocker：無、Major：無、Minor：無。" },
+  ]);
+  const r = orch({ transcript_path: tp });
+  assert.ok(r && /NOT READY/.test(r.systemMessage), "a localized completion must not bury a blocking verdict");
+});
+
+test("orchestration-check P1.2: a bare incidental READY (no verdict/severity vocabulary) stays silent", () => {
+  // The language-neutral signal requires >=2 distinct severity labels, so a casual uppercase
+  // READY can't cry wolf.
+  const tp = mkTranscript([
+    { role: "user", content: "is the env ready" },
+    { role: "assistant", content: "The build environment is READY for the next major push." },
+  ]);
+  assert.strictEqual(orch({ transcript_path: tp }), null, "incidental READY without the verdict vocabulary must not warn");
 });

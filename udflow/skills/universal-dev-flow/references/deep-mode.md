@@ -1,41 +1,57 @@
 ---
 name: deep-mode
-description: Optional deeper review/repair that runs the selected panel as a deterministic Workflow when an ultracode/Workflow capability is detected or explicitly opted in.
+description: Optional deterministic review/repair. Tier-1 enforcement (panel/gatekeeper as a Workflow) may auto-engage on high-risk work when a Workflow capability is present; Tier-2 deeper verification (adversarial checks, max effort) stays explicit opt-in.
 ---
 
 # Deep Mode (ultracode / Workflow leverage)
 
-Deep mode makes the review/repair core **deterministic** instead of model-followed prose: the selected reviewer panel, the gatekeeper barrier, and the repair loop are expressed as a Workflow so they actually run. It is **optional and off by default**, follows udflow's Detect → Use → Else-Disclose protocol, and never becomes a hard dependency. A skill cannot enable ultracode (it is a harness mode); deep mode only detects the signal and adapts.
+Deep mode makes the review/repair core **deterministic** instead of model-followed prose: the selected reviewer panel, the gatekeeper barrier, and the repair loop are expressed as a Workflow so they actually run. It follows udflow's Detect → Use → Else-Disclose protocol and never becomes a hard dependency. A skill cannot enable ultracode (it is a harness mode); deep mode only detects the signal and adapts.
 
-Deep mode raises **depth, not breadth.** The reviewer *selection* is unchanged — still the smallest sufficient set from `reviewer-selection.md`. Deep mode does not add reviewers; it only makes the already-selected panel run deterministically, adds adversarial verification of blocker/major findings, and raises reasoning effort at the highest-leverage points. This keeps it consistent with udflow's risk-proportional ethos.
+Deep mode raises **depth, not breadth.** The reviewer *selection* is unchanged — still the smallest sufficient set from `reviewer-selection.md`. It never adds reviewers.
+
+## Two tiers (enforcement is cheap; extra effort is not)
+
+Deep mode is split into two tiers so its *enforcement* benefit can be had cheaply without paying its *cost*:
+
+- **Tier 1 — deterministic enforcement.** Express the **already-selected** panel as a Workflow `parallel` barrier and the gatekeeper as a `pipeline` barrier, so the panel actually runs and gatekeeper only runs after it. **Same reviewers, same model, same reasoning effort** as the standard flow — the only change is that the orchestration is *enforced by the graph* rather than left to model self-discipline. Because it adds no effort, its token cost is ≈ the standard flow. **This is the tier that may auto-engage** (see Detect).
+- **Tier 2 — deeper verification (raises cost).** On top of Tier 1, add **adversarial verification** of blocker/major findings, **loop-until-dry** repair, and **maximum reasoning effort** for `gatekeeper` / `security-reviewer`. This materially raises tokens/wall-clock, so it stays **explicit opt-in** (per the Auto-fix loop's cost-control rule in `SKILL.md`) — never auto-engaged.
 
 ## Detect
 
-Three independent signals (none a hard dependency):
+Signals (none a hard dependency):
 
 1. A session-level ultracode signal (e.g. a SessionStart `additionalContext` / system-reminder indicating ultracode is on).
-2. An explicit per-task opt-in: `/udflow:run` arguments beginning with `--deep`, `deep:`, or `ultra:`.
-3. The Workflow capability actually exists in this runtime.
+2. An explicit per-task opt-in: `/udflow:run` arguments beginning with `--deep`, `deep:`, or `ultra:` (this requests **Tier 2**).
+3. The Workflow capability actually exists for the running orchestrator.
 
-Priority: signals 1–2 set the *intent*; signal 3 decides whether it can really run. Intent without capability → fall back and disclose.
+How the signals map to the tiers:
 
-## Use (when opted in AND the Workflow capability is available)
+- **Tier 1 auto-engages** when the task is **high-risk or correctness-critical** (per the `reviewer-selection.md` Risk Matrix) **and** the Workflow capability is available (signal 1 or 3). No `--deep` needed. It is **opt-out**: a `--no-deep` / `--shallow` argument — or simply no Workflow capability — falls back to the standard prose flow. Because Tier 1 doesn't raise effort, auto-engaging it does **not** trip the "confirm before an opus-heavy pass" cost rule.
+- **Tier 2 requires explicit opt-in** (signal 2, or a user confirmation) **and** the Workflow capability. Intent without capability → fall back and disclose.
 
-Express the core as a deterministic Workflow:
+For low/medium-risk work neither tier auto-engages — the standard prose flow runs unless `--deep` is given.
 
+## Use
+
+When the Workflow capability is available:
+
+**Tier 1 (enforcement — auto or opted in):**
 1. **Panel as a `parallel` barrier** — the selected reviewers each run as a Workflow agent that returns a schema-validated finding set. Reuse the existing output contract in `reviewer-common.md`; do not invent a new schema. Each agent still receives only its own focused Review Packet, preserving reviewer independence.
 2. **Gatekeeper as a `pipeline` barrier** — gatekeeper runs only after the panel barrier completes (encoding the `runtime-policy.md` rule as control flow, not prose).
+
+**Tier 2 (only when explicitly opted in — adds cost):**
 3. **Adversarial verification** — for each blocker/major finding, fan out 2–3 independent verifiers and keep only findings supported by a majority.
 4. **Loop-until-dry repair** — implement → verify → review repeats until a round produces no new blocker/major (still subject to the Auto-fix loop's hard iteration cap and Stuck Summary).
 5. **Effort** — run `gatekeeper` and `security-reviewer` at maximum reasoning effort; low-risk leaf reviewers use the default.
 
-## Else (not opted in, or capability unavailable)
+## Else (no Workflow capability, or opted out)
 
-Run exactly the standard prose flow. If deep mode was requested but the Workflow capability is unavailable, add one line of disclosure: deep mode was requested but the Workflow capability was unavailable, so the standard flow ran and the panel was model-orchestrated rather than deterministically enforced. Never error on absence.
+Run exactly the standard prose flow. **The enforcement guarantee is bounded to Workflow-capable sessions:** without the capability udflow cannot make the panel run deterministically — it falls back to model-orchestrated prose (the panel is still *selected* and *run*, just not graph-enforced). If Tier 1 would have auto-engaged (high-risk) but no capability exists, or if `--deep` (Tier 2) was requested and is unavailable, add one line of disclosure: the deterministic Workflow was unavailable, so the standard flow ran and the panel was model-orchestrated rather than graph-enforced. Never error on absence.
 
 ## Invariants in both modes
 
 - The plan gate and failure-memory hooks are active in both modes; deep mode changes neither hook and the hooks must never depend on deep mode.
 - Plan approval (ExitPlanMode) stays human-in-the-loop; the Workflow does not take it over.
+- **Cost stays proportional.** Tier 1 adds enforcement at ≈ standard cost and may auto-engage on high-risk work; Tier 2 raises effort and is **never** auto-engaged — it needs `--deep` or an explicit confirmation, honoring the `SKILL.md` Auto-fix loop cost-control rule.
 - The conditional plan-grounding step (`references/plan-grounding.md`) runs the same in both modes; in deep mode its Stage A grounding may run as a read-only Workflow agent node, but it never changes reviewer selection.
 - Roles, severity vocabulary (`blocker`/`major`/`minor`), and the verdict set (`READY`/`FIX REQUIRED`/`NOT READY`) are unchanged, so a deep run and a standard run are directly comparable — only enforcement, verification depth, and effort differ.
