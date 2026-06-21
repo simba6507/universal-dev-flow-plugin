@@ -3,6 +3,17 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.8]
+
+Marketplace-readiness polish (ahead of an optional community-marketplace submission). One real behavior change — udflow now installs **disabled by default** — plus a readable display name.
+
+### Added
+- **`defaultEnabled: false`** on the marketplace entry — udflow now installs **disabled**, so its cost (multi-agent token usage) and its three always-on session hooks are **opt-in**: you enable it deliberately after installing. Follows the official best practice for plugins with cost/security implications and matches udflow's own risk-proportional, "stays out of the way" ethos.
+- **`displayName: "Universal Dev Flow"`** (plugin manifest + marketplace entry) — a readable label in the plugin UI; the identifier stays `udflow`.
+
+### Notes
+- Shipped logic (skills / agents / hooks) is unchanged from 0.9.7; this is manifest metadata plus an install-default change.
+
 ## [0.9.7]
 
 Tooling + docs only — the shipped plugin (`udflow/`) is unchanged from 0.9.6; this bump realigns the release tag with `master` after the post-0.9.6 CI/docs work. No hook, reviewer, or workflow behavior change.
