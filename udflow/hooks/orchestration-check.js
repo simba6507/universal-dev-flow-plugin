@@ -39,6 +39,16 @@ function claimsComplete(text) {
   return /\b(ready to (?:ship|merge|release|go)|good to go|all set|you'?re all set|ship it|shipped|is complete|is done|done!|all done|no (?:remaining |outstanding )?issues|safe to (?:ship|merge|release)|looks good)\b/i.test(text);
 }
 
+// A DELIBERATE ship/readiness decision — used to gate the panel-presence check, which (unlike
+// verdict-honoring) has no blocking-token precondition, so it must stay clear of casual "looks
+// good / done" to avoid crying wolf. Catches the formal verdict AND the lowercase / no-keyword
+// ship phrasings, closing the "drop the verdict word to dodge the check" gap without nagging
+// trivial completions.
+function claimsShipReady(text) {
+  if (/\bREADY\b/.test(text) && /verdict|gatekeeper|readiness/i.test(text)) return true;
+  return /\b(ready to (?:ship|merge|release)|cleared to (?:ship|merge|release)|safe to (?:ship|merge|release)|good to go|ship it|ready for (?:release|production|merge))\b/i.test(text);
+}
+
 let raw = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("error", () => process.exit(0));
@@ -78,9 +88,9 @@ process.stdin.on("end", () => {
     const verdict = lastVerdict(bodyBeforeFinal);
     const finalReportsBlock = /\b(NOT READY|FIX REQUIRED)\b/.test(finalText);
     const finalClaimsComplete = claimsComplete(finalText);
-    const assertsReady = /\bREADY\b/.test(finalText) && /verdict|gatekeeper|readiness/i.test(finalText);
+    const finalShipReady = claimsShipReady(finalText);
     debug("verdict=" + verdict + " claimsComplete=" + finalClaimsComplete + " reportsBlock=" + finalReportsBlock +
-      " assertsReady=" + assertsReady + " ran=[" + [...ran].join(",") + "]");
+      " shipReady=" + finalShipReady + " ran=[" + [...ran].join(",") + "]");
 
     // (1) Verdict not honored — highest value. A real blocking verdict was reached, yet the
     // session ends claiming completion without surfacing it. The blocking token is strong,
@@ -96,7 +106,7 @@ process.stdin.on("end", () => {
     // (2) READY asserted but the core panel did not fully run. Graded: distinguish "never ran"
     // (panel clearly skipped) from "incomplete" (some core reviewers missing — e.g. only the
     // gatekeeper ran, skipping the spec/test reviewers that do the actual review work).
-    if (assertsReady && !finalReportsBlock && missing.length > 0) {
+    if (finalShipReady && !finalReportsBlock && missing.length > 0) {
       const msg = ran.size === 0
         ? "udflow: a READY verdict was asserted but none of the core review panel (spec-reviewer, " +
           "test-reviewer, gatekeeper) appears to have run as a subagent this session. A self-review is " +

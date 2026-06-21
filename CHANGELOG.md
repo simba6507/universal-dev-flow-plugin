@@ -12,7 +12,11 @@ Hardens the two session "tripwire" hooks against the gaps a security pass found 
 - **Plan-gate Bash coverage** for non-redirect working-tree writers that were silently allowed (and not even on the documented-miss list): `perl -i`, `truncate`, `dd of=` (exempting `of=/dev/null`), and `ln` (symbolic/hard links). Joins the existing redirect / `tee` / `sed -i` / `git apply` set.
 
 ### Changed
-- **Incomplete-panel detection** (`orchestration-check.js`): a `READY` claim now requires **all** core panel agents (`spec-reviewer`, `test-reviewer`, `gatekeeper`) to have run — previously any single agent appearing silenced the check, so spawning only the gatekeeper dodged it. The reminder names the reviewers that did not run; the "none ran" case keeps its stronger wording.
+- **Incomplete-panel detection** (`orchestration-check.js`): a ship/readiness claim now requires **all** core panel agents (`spec-reviewer`, `test-reviewer`, `gatekeeper`) to have run — previously any single agent appearing silenced the check, so spawning only the gatekeeper dodged it. The reminder names the reviewers that did not run; the "none ran" case keeps its stronger wording.
+- **Panel check is no longer evaded by dropping the verdict word** (`orchestration-check.js`): the trigger now also recognizes deliberate lowercase / no-keyword ship phrasings ("ready to ship", "good to go", "safe to merge", …), not just an uppercase `READY` verdict token. Stays conservative — casual "looks good / done" with no ship decision does **not** trigger it, so trivial work that legitimately ran no panel is not nagged.
+
+### Fixed
+- **Plan-gate exemption is now filesystem-case-correct** (`plan-gate.js`): the `~/.claude/plans` write-exemption folds case only on case-insensitive filesystems (Windows/macOS). On case-sensitive systems (Linux) a real directory literally named `PLANS` is no longer wrongly treated as the exempt plan dir — narrowing the writable-exemption set to exactly the intended path.
 
 ### Docs
 - README (EN/zh) and `SKILL.md` updated to list the broader Bash coverage and to state plainly that interpreter one-liners (`node -e fs.writeFileSync(...)`, `python -c "open(...,'w')"`) and `xargs`-driven writes still slip — the tripwire is a safety net, and a default plan mode in settings is the hard guard. The `orchestration-check` description now covers the verdict-honoring advisory.

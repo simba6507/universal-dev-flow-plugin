@@ -147,6 +147,17 @@ test("plan-gate: a junction under ~/.claude/plans whose target escapes is NOT ex
   );
 });
 
+test("plan-gate: on a case-sensitive FS, an uppercase ~/.claude/PLANS path is NOT exempt", (t) => {
+  // The exemption folds case only on case-insensitive filesystems (Windows/macOS). On Linux a
+  // real directory literally named PLANS must not inherit the lowercase 'plans' exemption.
+  if (process.platform === "win32" || process.platform === "darwin") return t.skip("case-insensitive FS");
+  const { home, env } = isolatedHome();
+  t.after(() => { try { fs.rmSync(home, { recursive: true, force: true }); } catch (e) {} });
+  const upper = path.join(home, ".claude", "PLANS", "x.md");
+  assert.strictEqual(gate({ tool_name: "Write", permission_mode: "plan", tool_input: { file_path: upper } }, env), "DENY",
+    "uppercase PLANS must not be exempt on a case-sensitive FS");
+});
+
 test("normal file write is denied in plan mode, allowed otherwise", () => {
   const f = path.join(os.tmpdir(), "proj", "src", "app.ts");
   assert.strictEqual(gate({ tool_name: "Write", permission_mode: "plan", tool_input: { file_path: f } }), "DENY");
@@ -406,6 +417,27 @@ test("orchestration-check honors a FIX REQUIRED -> repair -> READY loop (silent)
     { role: "user", content: [{ type: "tool_result", content: "Final verdict: FIX REQUIRED — add an edge test." }] },
     { role: "user", content: [{ type: "tool_result", content: "Final verdict: READY — fix verified." }] },
     { role: "assistant", content: "Done — gatekeeper verdict: READY. readiness confirmed." },
+  ]);
+  assert.strictEqual(orch({ transcript_path: tp }), null);
+});
+
+test("orchestration-check catches a lowercase ship claim with no panel (closes the dodge)", () => {
+  // Dropping the uppercase READY verdict token for a lowercase "ready to ship" no longer evades
+  // the panel-presence check.
+  const tp = mkTranscript([
+    { role: "user", content: "do it" },
+    { role: "assistant", content: "All implemented — this is ready to ship." },
+  ]);
+  const r = orch({ transcript_path: tp });
+  assert.ok(r && /none of the core review panel/.test(r.systemMessage), "lowercase ship claim must still trigger the panel check");
+});
+
+test("orchestration-check does NOT nag a casual completion with no formal ship claim", () => {
+  // "looks good / done" without a ship decision must stay silent — the panel check must not cry
+  // wolf on trivial work that legitimately never ran a panel.
+  const tp = mkTranscript([
+    { role: "user", content: "tweak the readme wording" },
+    { role: "assistant", content: "Done — looks good now." },
   ]);
   assert.strictEqual(orch({ transcript_path: tp }), null);
 });

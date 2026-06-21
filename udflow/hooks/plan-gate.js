@@ -91,10 +91,15 @@ process.stdin.on("end", () => {
     let isPlanFile = false; // only relevant for structured edits to ~/.claude/plans
     if (targetPath) {
       try {
+        // Compare case-insensitively ONLY on the case-insensitive filesystems (Windows, macOS).
+        // On case-sensitive systems (Linux), folding case would wrongly exempt a real directory
+        // named e.g. ~/.claude/PLANS — widening the writable-exemption set. Match the FS instead.
+        const caseInsensitiveFS = process.platform === "win32" || process.platform === "darwin";
+        const norm = (s) => { s = s.replace(/\\/g, "/"); return caseInsensitiveFS ? s.toLowerCase() : s; };
         let resolved = path.resolve(String(targetPath));
         try { resolved = realpathDeepest(resolved); } catch (e) {}
-        resolved = resolved.replace(/\\/g, "/").toLowerCase();
-        const planRoot = path.join(os.homedir(), ".claude", "plans").replace(/\\/g, "/").toLowerCase() + "/";
+        resolved = norm(resolved);
+        const planRoot = norm(path.join(os.homedir(), ".claude", "plans")) + "/";
         isPlanFile = resolved.startsWith(planRoot);
       } catch (e) { isPlanFile = false; }
     }
