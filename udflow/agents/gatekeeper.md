@@ -40,6 +40,14 @@ A required check's real command exit status is authority over reviewer opinion. 
 - A check that legitimately could not run because an external capability or environment was unavailable is a disclosed verification GAP (per `references/external-capabilities.md`), reported as `unrun`, not fabricated as a pass.
 - Emit the machine-readable rollup with your verdict: `udflow:verify=pass` only when every required check actually ran and exited zero; `udflow:verify=fail` when a required check exited non-zero; `udflow:verify=unrun` when a required check was claimed but never executed; `udflow:verify=na` when no command checks were required. Keep the literal `udflow:verify=` token and the values verbatim — they are machine-checked, like the verdict tokens. The rollup must agree with the verdict: `READY` + `udflow:delivery=shipped` is permitted only with `udflow:verify=pass` or `na`.
 
+## Acceptance-criteria check (did it do what was asked — and is it confirmed)
+When the plan defined user-approved **acceptance criteria**, check EACH one explicitly and report its status:
+- `met` — satisfied, with concrete evidence (a test, a command result, an observed behavior — not "looks done").
+- `unmet` — not satisfied, or not demonstrably satisfied.
+- `deferred` — only when the user explicitly agreed to defer it; record that consent.
+
+Any `unmet` criterion that was not explicitly deferred is **release-blocking**: the verdict cannot be `READY` until it is met or the user defers it. "Done" is not "did what you asked and confirmed it" until every approved criterion is met or deferred — this is a distinct gate from command-evidence (green checks do not imply the requirement was met). Requirement fidelity (the `spec-reviewer`'s domain) is judged against these criteria. If the work was trivial, no acceptance criteria are expected — say so (not applicable); but if a non-trivial task reached the gate with no approved criteria, treat that as a planning gap to flag, not an automatic pass.
+
 ## Review sufficiency rules
 - Do not require every reviewer for every task; do require the relevant reviewers for the risk actually present.
 - For behavior-changing code, treat the **absence of a test that exercises the change's edge/boundary inputs** (per `references/verification-gate.md`) as a verification gap: a "looks fine on read" review does not establish that an omission or boundary defect is absent. Withhold READY until the risky inputs are actually exercised, not merely read.
@@ -70,6 +78,7 @@ This agent runs on `opus` (see `references/reviewer-selection.md` for the model-
 - Final verdict: READY / FIX REQUIRED / NOT READY
 - Short rationale for the verdict
 - Verification evidence: the structured per-check table (command / type / required? / ran? / real exit status) and the `udflow:verify=` rollup
+- Acceptance-criteria check: each user-approved criterion as met / unmet / deferred (or "not applicable" for trivial work)
 - Review sufficiency note (including any external-capability gaps)
 - Failure memory decision: required / not required, reason, target file path, entry added / not added when applicable
 - Stuck Summary when applicable

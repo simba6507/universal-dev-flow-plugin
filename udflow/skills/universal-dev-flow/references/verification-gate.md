@@ -152,6 +152,9 @@ For substantial tasks, end with:
 - commands/checks executed and results
 - exact blockers and remaining uncertainty for checks not run
 
+## Acceptance Criteria
+- each user-approved criterion as met / unmet / deferred (or "not applicable" for trivial work)
+
 ## External Capabilities
 - MCP / skills / subagents used
 - any that were unavailable, the local fallback used, and the resulting verification gap
@@ -189,6 +192,7 @@ Write the labels and prose in the **user's language**, but keep the machine-chec
 ## Run Card
 - Verdict: READY | FIX REQUIRED | NOT READY
 - Checks: <command> <pass|fail|unrun>, … (e.g. `npm test` pass, `tsc --noEmit` pass) — exit status, not opinion
+- Acceptance: <N/N criteria met | list any unmet/deferred (note user-consented deferrals) | "n/a"> — did it do what was asked
 - Reviewers: <which ran, e.g. spec-reviewer, test-reviewer, gatekeeper | "self-review (no panel)">
 - Top findings: up to 3, each `blocker`|`major`|`minor` + one line (or "none")
 - Auto-fixed: <what the repair loop fixed this session | "nothing">

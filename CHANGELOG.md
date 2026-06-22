@@ -3,6 +3,19 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.12.0]
+
+Adds suggestion #3 — user-approved **acceptance criteria** with a per-item gate check (**prose/persona only**; no hook and no new sentinel, keeping udflow's "gate = gatekeeper" philosophy and minimal surface). The deepest release signal isn't "no bugs," it's "did what you asked, and confirmed it."
+
+### Added
+- **Acceptance-criteria gate** (`SKILL.md`, `agents/gatekeeper.md`, `references/review-packet.md`, `references/verification-gate.md`): for non-trivial work the orchestrator turns the requirement into a short, numbered, **user-approved** acceptance-criteria checklist at the plan gate (on high-risk work these *are* the plan-grounding sharpened contract), carries it into the Review Packet, and the `gatekeeper` checks **each item** — `met` (with evidence) / `unmet` / `deferred` (only with explicit user consent). An `unmet`, non-deferred criterion **blocks `READY`**. The Run Card and Final Output Contract surface the per-criterion result. This is a distinct gate from command-evidence: green checks do not imply the requirement was met.
+
+### Changed
+- The Review Packet's "Success criteria" field and template slot become first-class **"Acceptance criteria (user-approved)"** (`references/review-packet.md`); `plan-grounding.md` notes the sharpened contract forms the user-approved acceptance criteria; `spec-reviewer.md` judges requirement fidelity against the criteria (the `gatekeeper` makes the final per-criterion ruling); `README.md` / `README.zh-TW.md` document the acceptance-criteria gate.
+
+### Tests
+- **No new behavioral tests** — this is a prose/persona change with no new hook code or machine-checked surface (the gate is the `gatekeeper` persona, not a hook). `node --test` is unchanged at 104 tests / 100 pass / 0 fail / 4 skipped (the 4 skipped are platform symlink/case tests; confirming no hook was disturbed), and `node .github/scripts/validate-structure.mjs` passes (version 0.12.0 agreement across the four manifests, CHANGELOG entry, README parity, hook wiring).
+
 ## [0.11.0]
 
 Adds the **depth** half of udflow's "no verification, no delivery" promise — a verification sentinel, a gatekeeper command-evidence authority rule, and a user-visible Run Card — alongside a batch of repo hardening (a SessionStart symlink-containment fix, a Stop-hook panel-safety-net fix, a CI wiring-gate fix) and two doc-honesty corrections. The new sentinel is **opt-in** and the hooks stay **fail-open / non-blocking**; when the sentinel is absent, behavior is identical to 0.10.8.

@@ -62,6 +62,7 @@ Non-trivial work must pass an explicit plan gate before implementation begins. T
 
 - Understand before coding.
 - Plan before coding, and get the plan approved at the plan gate.
+- For non-trivial work, turn the requirement into a short, user-approved **acceptance criteria** checklist at the plan gate, and have `gatekeeper` verify each criterion before `READY` (see `agents/gatekeeper.md`, `references/verification-gate.md`).
 - Make the smallest safe change.
 - Modify only requested scope unless a broader change is required for correctness, safety, buildability, or testability.
 - Verify with commands, browser evidence, text-integrity checks, or explicit blockers as applicable.
@@ -99,6 +100,7 @@ When touching human-readable text, check for mojibake, replacement characters, b
    - Plan to the project language/framework's official best practices and the repo's conventions. If the existing code diverges materially from those best practices, state the gap here and propose concrete corrections; do not silently refactor beyond the requested scope.
    - For UI work, include target screens, states, responsive/accessibility concerns, and browser verification target or blocker. If the `ui-ux-pro-max` skill is available, consult it for design decisions (styles, palettes, font pairings, UX guidelines) during planning; if unavailable, fall back to internal `ui-ux-reviewer` guidance and note that ui-ux-pro-max was not used (see `references/external-capabilities.md`).
    - Before non-trivial implementation, consult failure memory — project-specific `ai/FAILURE_MEMORY.md` when it exists, otherwise `~/.claude/FAILURE_MEMORY.md`. The SessionStart digest is only an index; here, retrieve the full entries relevant to this task's affected files, area, language, and error type (filter by `Tags`) and read them. Before any failure-memory write, reread the global `~/.claude/FAILURE_MEMORY.md` and merge with a similar existing entry when one exists.
+   - **Define acceptance criteria.** For non-trivial work, turn the requirement into a short, numbered checklist of observable / verifiable outcomes that define done, and present it **as part of the plan** for user approval at ExitPlanMode (no separate approval step). On high-risk work these *are* the plan-grounding **sharpened contract** (do not duplicate it); skip them for trivial work. Route any ambiguous criterion through AskUserQuestion, carry the approved list into the Review Packet, and the `gatekeeper` checks each one at the gate (step 7). The deepest release signal is not "no bugs" — it is "did what you asked, and confirmed it."
    - Present the plan via ExitPlanMode **in the user's language** (keep identifiers, file names, commands, and verdict tokens verbatim — see Language And Text Integrity) and wait for approval (Plan Gate).
 
 3. Implementation
@@ -132,6 +134,7 @@ When touching human-readable text, check for mojibake, replacement characters, b
    - `code-reviewer` owns local implementation quality, simplicity, framework usage, and efficiency on changed paths.
    - Run `gatekeeper` only after selected reviewers finish.
    - `gatekeeper` decides `READY`, `FIX REQUIRED`, or `NOT READY` and whether failure memory is required.
+   - `gatekeeper` **checks each user-approved acceptance criterion** (met / unmet / deferred); an `unmet`, non-deferred criterion blocks `READY` (see `agents/gatekeeper.md`).
 
 8. Auto-fix loop
    - If verdict is `FIX REQUIRED` or `NOT READY`, fix concrete findings, rerun relevant verification, rerun only affected reviewers, rerun `gatekeeper`, and repeat until `READY` or clearly blocked.
