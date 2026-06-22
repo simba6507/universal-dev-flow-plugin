@@ -438,6 +438,28 @@ test("orchestration-check fails open (silent) on an over-cap transcript (>32MB)"
   }
 });
 
+test("orchestration-check still evaluates a just-under-cap transcript — warns, proving the size guard isn't eager", () => {
+  // Pairs with the over-cap test above: a large transcript that is still UNDER the 32 MB cap must be
+  // evaluated normally (here READY with no panel -> the panel-missing advisory fires). Guards against
+  // a flipped '>' or a lowered cap that would wrongly skip real, in-range sessions (a silent regression
+  // the over-cap "big -> silent" test cannot catch on its own).
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-bigtx-"));
+  const p = path.join(dir, "transcript.jsonl");
+  const pad = JSON.stringify({ role: "user", content: "x".repeat(1024 * 1024) }) + "\n"; // ~1MB/line
+  const fd = fs.openSync(p, "w");
+  try {
+    for (let i = 0; i < 30; i++) fs.writeSync(fd, pad); // ~31MB, comfortably under the 32MB cap
+    fs.writeSync(fd, JSON.stringify({ role: "assistant", content: "Final verdict: READY — readiness confirmed." }) + "\n");
+  } finally { fs.closeSync(fd); }
+  try {
+    const r = orch({ transcript_path: p });
+    assert.ok(r && /none of the core review panel/.test(r.systemMessage),
+      "an under-cap transcript must still be evaluated (a flipped '>' or lowered cap would wrongly silence this)");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("orchestration-check warns when READY is asserted and NO panel agent ran", () => {
   const tp = mkTranscript([
     { role: "user", content: "do the thing" },
