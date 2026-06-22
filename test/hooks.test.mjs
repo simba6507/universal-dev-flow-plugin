@@ -158,6 +158,35 @@ test("plan-gate: a junction under ~/.claude/plans whose target escapes is NOT ex
   );
 });
 
+test("plan-gate: a symlinked HOME still exempts ~/.claude/plans (realpath BOTH sides)", (t) => {
+  // The exemption compares realpath(target) against realpath(~/.claude/plans). If HOME itself is
+  // reached through a symlink (e.g. macOS, where the temp dir resolves via /var -> /private/var, or
+  // any symlinked home), the root must be resolved too or the legitimate plan write is wrongly denied.
+  // Fails on every platform if only the target is realpath-resolved. Skip where a dir symlink can't be
+  // created (Windows without privilege).
+  const realHome = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-realhome-"));
+  const linkParent = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-linkhome-"));
+  const linkHome = path.join(linkParent, "home-link");
+  t.after(() => {
+    try { fs.rmSync(realHome, { recursive: true, force: true }); } catch (e) {}
+    try { fs.rmSync(linkParent, { recursive: true, force: true }); } catch (e) {}
+  });
+  try {
+    fs.mkdirSync(path.join(realHome, ".claude", "plans"), { recursive: true });
+    fs.symlinkSync(realHome, linkHome, "dir");
+  } catch (e) {
+    return t.skip("cannot create a directory symlink here: " + (e && e.code));
+  }
+  const env = { ...process.env, HOME: linkHome, USERPROFILE: linkHome };
+  delete env.CLAUDE_PROJECT_DIR;
+  const planFile = path.join(linkHome, ".claude", "plans", "p.md"); // under the SYMLINKED home
+  assert.strictEqual(
+    gate({ tool_name: "Write", permission_mode: "plan", tool_input: { file_path: planFile } }, env),
+    "ALLOW",
+    "a plan file under a symlinked home's ~/.claude/plans must stay exempt"
+  );
+});
+
 test("plan-gate: on a case-sensitive FS, an uppercase ~/.claude/PLANS path is NOT exempt", (t) => {
   // The exemption folds case only on case-insensitive filesystems (Windows/macOS). On Linux a
   // real directory literally named PLANS must not inherit the lowercase 'plans' exemption.
@@ -760,5 +789,53 @@ test("validate-structure: README parity FAILS when the zh README omits a wired h
     const { code, out } = runValidator(tree);
     assert.notStrictEqual(code, 0, "zh omitting a wired hook name must fail the build");
     assert.match(out, /plan-gate/, "the failure must name the missing hook");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: a version mismatch across manifests FAILS", () => {
+  const tree = copyRepoTree();
+  try {
+    const pj = path.join(tree, "udflow", ".claude-plugin", "plugin.json");
+    const obj = JSON.parse(fs.readFileSync(pj, "utf8"));
+    obj.version = "9.9.9"; // disagree with marketplace.json / package.json / CHANGELOG
+    fs.writeFileSync(pj, JSON.stringify(obj, null, 2), "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "a version that disagrees across manifests must fail the build");
+    assert.match(out, /version mismatch/, "the failure must name the version mismatch");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: a missing SKILL-linked reference FAILS", () => {
+  const tree = copyRepoTree();
+  try {
+    // SKILL.md links references/review-packet.md; deleting it must be caught by the broken-ref check.
+    fs.rmSync(path.join(tree, "udflow", "skills", "universal-dev-flow", "references", "review-packet.md"));
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "a reference linked from SKILL.md but missing on disk must fail the build");
+    assert.match(out, /missing reference/, "the failure must name the missing reference");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: a shipped forbidden artifact FAILS (distribution hygiene)", () => {
+  const tree = copyRepoTree();
+  try {
+    // A package.json inside the shipped plugin subdir is a dev artifact that must never ship.
+    fs.writeFileSync(path.join(tree, "udflow", "package.json"), '{"name":"leak"}', "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "a runtime/dev artifact in the shipped tree must fail the build");
+    assert.match(out, /distribution hygiene/, "the failure must name the distribution-hygiene check");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: a missing CHANGELOG entry for the current version FAILS", () => {
+  const tree = copyRepoTree();
+  try {
+    const ver = JSON.parse(fs.readFileSync(path.join(tree, "udflow", ".claude-plugin", "plugin.json"), "utf8")).version;
+    const cl = path.join(tree, "CHANGELOG.md");
+    // Mangle the heading for the current version so the "## [<version>]" check can't find it.
+    fs.writeFileSync(cl, fs.readFileSync(cl, "utf8").replace(`## [${ver}]`, "## [_removed_for_test_]"), "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "a missing CHANGELOG entry for the manifest version must fail the build");
+    assert.match(out, /CHANGELOG\.md has no/, "the failure must name the missing CHANGELOG entry");
   } finally { fs.rmSync(tree, { recursive: true, force: true }); }
 });
