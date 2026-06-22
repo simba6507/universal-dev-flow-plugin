@@ -20,6 +20,7 @@ Severity vocabulary, scope discipline, and the base output contract are shared a
 
 ## Primary responsibilities
 - Validate requirement coverage.
+- When the plan defined user-approved acceptance criteria, judge requirement fidelity against them — flag any criterion not demonstrably met as a requirement-coverage gap (the `gatekeeper` makes the final per-criterion ruling).
 - Identify missing business rules, logic/contract mismatches, and hidden assumptions that alter behavior.
 - Detect missing edge conditions implied by the requirement.
 

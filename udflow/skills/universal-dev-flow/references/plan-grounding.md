@@ -44,7 +44,7 @@ Produce:
 
 | Output | Routed to | Effect |
 |--------|-----------|--------|
-| Sharpened contract | the Review Packet's Task / Success criteria / Reviewer scope (`references/review-packet.md`) | delivers the contract-level intent the benchmark shows lifts recall — the actual lever |
+| Sharpened contract | the Review Packet's Task / Acceptance criteria / Reviewer scope (`references/review-packet.md`) — on high-risk work it **is** the user-approved acceptance criteria the gatekeeper checks per-item | delivers the contract-level intent the benchmark shows lifts recall — the actual lever |
 | Implied edge checklist | the Verification Gate's "exercise the change's risky inputs" (`references/verification-gate.md`) and the `test-reviewer` scope (`references/review-packet.md`) | the edge tests are enumerated at plan time, not improvised at verification time |
 | Open product decisions | `AskUserQuestion` at the plan gate | the user decides the product behavior |
 | Gaps vs intent | the plan itself, before `ExitPlanMode` | omissions are closed before any code is written |

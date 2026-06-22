@@ -5,7 +5,7 @@ Use a Review Packet before handing work to any reviewer. The packet is the revie
 ## Required Fields
 
 - Task summary: one concise statement of the requested change.
-- Success criteria: observable outcomes that define done.
+- Acceptance criteria (user-approved): a numbered checklist of observable, verifiable outcomes that define done — approved by the user at the plan gate. The `gatekeeper` checks each item (met / unmet / deferred; see `agents/gatekeeper.md`), and an unmet, non-deferred criterion blocks `READY`. They are approved as part of the plan at ExitPlanMode — not a separate approval step. On high-risk work these are the plan-grounding **sharpened contract**.
 - In scope: workflows, files, modules, or user-visible behavior reviewed.
 - Out of scope: adjacent behavior intentionally not changed.
 - Assumptions: only assumptions that affected implementation or verification.
@@ -17,7 +17,7 @@ Use a Review Packet before handing work to any reviewer. The packet is the revie
 - Context exclusions: stale decisions, abandoned approaches, or old logs that reviewers should not treat as current.
 - External-capability notes: which optional MCP/skills/subagents were used or were unavailable, and any resulting verification gaps.
 
-On high-risk work where the plan-grounding step ran (`references/plan-grounding.md`), populate Success criteria and Reviewer scope from its **sharpened contract**, and seed Verification evidence / expected tests from its **implied edge checklist**. This contract-level intent is the dominant recall lever (see `references/reviewer-selection.md`, *Recall vs precision*), so carry it into the packet rather than re-deriving a vaguer version.
+On high-risk work where the plan-grounding step ran (`references/plan-grounding.md`), populate the Acceptance criteria and Reviewer scope from its **sharpened contract**, and seed Verification evidence / expected tests from its **implied edge checklist**. This contract-level intent is the dominant recall lever (see `references/reviewer-selection.md`, *Recall vs precision*), so carry it into the packet rather than re-deriving a vaguer version.
 
 ## Handoff Template
 
@@ -26,7 +26,7 @@ On high-risk work where the plan-grounding step ran (`references/plan-grounding.
 
 Task:
 
-Success criteria:
+Acceptance criteria (user-approved, numbered; gatekeeper checks each):
 
 In scope:
 
@@ -54,6 +54,7 @@ Shared reviewer contract:
 - Judge code on its merits, not its pedigree: do NOT assume it is correct because it looks idiomatic/canonical/"intentional"/like a well-known library. A defect is real if you can name a concrete input or condition that yields a wrong result, leak, crash, or contract violation — then report it.
 - Rate severity by the impact of that failure case (data loss / security / crash / wrong result ⇒ `blocker`/`major`); do not downgrade a demonstrated defect to `minor` just because the code looks established or "accepted".
 - Look for omissions, not only wrong lines: compare behavior to what the name/signature/docstring/requirement imply, and flag what is missing (unhandled case, cleanup that should pair with a create/delete, a required guard/limit/validation, a value like length/default/header that should be set) — anchored to that implied contract, not speculation.
+- When the packet lists numbered acceptance criteria, evaluate coverage against each within your discipline and flag any not demonstrably met (the `gatekeeper` makes the final per-criterion ruling).
 - Reason in the target language's real semantics (truthiness/equality, value-vs-reference and receiver semantics, string/byte/encoding, ownership/lifetimes, numeric overflow), not as generic pseudocode.
 - Enumerate; do not stop at the first finding — finding one real issue is not a reason to conclude the rest of the scope is correct.
 - Output at least: scope reviewed; findings by severity with exact file/method/contract/component/path evidence and the smallest safe fix; recommended corrections.
