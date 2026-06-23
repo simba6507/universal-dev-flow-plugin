@@ -3,6 +3,17 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.17.0]
+
+Make the merged final report **visual**: tables wherever a list fits, light terminal-renderable cues, and a mermaid chart for richer viewers.
+
+### Changed
+- **Report presentation** (`references/verification-gate.md`): the end-of-run report now uses **tables** for Files Changed, Checks, Cost, Findings, Per-agent activity, Outcome, and Failure Memory (Assumptions / Missing Tests / Risks stay narrative bullets); a `█`/`░` **Share bar** in the cost table (observed figures only); **status glyphs** (✅ / ❌ / ⚠️ for checks, 🔴 / 🟠 / 🟡 for severities, a verdict glyph); and a **mermaid `pie`** of the token split that renders in IDE / GitHub viewers (a terminal shows the code block, so the table stays the readable primary). A new **Presentation** rule block governs all of it.
+- `SKILL.md` (step 9), `README.md` / `README.zh-TW.md`: note the visual presentation (EN/zh in sync).
+
+### Notes
+- **Glyphs are decoration only — the machine-checked literals (`READY` / `FIX REQUIRED` / `NOT READY`, `blocker` / `major` / `minor`, the `udflow:` sentinels) stay as plain words beside them**, so the Stop hook reads the report exactly as before. Honesty preserved: bars and charts are drawn only from observed figures and never imply precision the no-telemetry numbers lack. Spec/docs-only — no code or hook change. `node --test`: 104 tests, 0 fail (102 pass / 2 skipped; skip count is OS-symlink-privilege dependent). `node .github/scripts/validate-structure.mjs` passes — version agrees across `plugin.json` / `marketplace.json` / `package.json` / this CHANGELOG entry.
+
 ## [0.16.0]
 
 Merge udflow's end-of-run output into **one report**. A substantial run used to emit three overlapping artifacts — the Final Output Contract template, the compact **Run Card**, and the table-based **Run Report** — duplicating verdict / checks / findings / acceptance / cost. They are now a single report whose top-level structure is the contract's sections, with the Run Card and Run Report detail folded in and the machine sentinels kept as the footer.
