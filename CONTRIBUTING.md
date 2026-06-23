@@ -30,7 +30,7 @@ Testimonials, stars, install counts, and "it felt useful" are welcome **adoption
 
 ## Reporting a verified run
 
-Open a **"Verified udflow run"** issue (the issue template walks you through the fields): repository / stack, task summary, language / framework, reviewers selected, verification commands run, final verdict, what udflow **caught**, what it **missed**, any **false positive**, and whether the verdict **held up** after follow-up use. Link a PR / commit / sanitized log when you can — a verifiable artifact is what turns a claim into evidence.
+Open a **"Verified udflow run"** issue. The form is short — pick the **run type** and **final verdict**, tick the **reviewers** that ran, and paste the **"Live run" block udflow prints at the end of a real run** into **Run details** (or fill the skeleton): the task, the intent you gave, the verification you ran, what udflow **caught**, what it **missed**, any **false positive**, and whether the verdict **held up** after follow-up use. Link a PR / commit / sanitized log when you can — a verifiable artifact is what turns a claim into evidence.
 
 **Sanitize** private code, secrets, credentials, customer data, and proprietary business rules before posting. If a run can't be shared safely, a sanitized summary with the outcome is still useful.
 

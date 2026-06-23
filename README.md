@@ -292,7 +292,7 @@ udflow ships **no telemetry**, so a real run only counts toward dropping the "ex
 
 - **Misses and false alarms are wanted too**, not just wins — honest data is the point, and more credible.
 - Sanitize private code and secrets first; a sanitized stack + outcome is fine for private repos.
-- udflow prints a paste-ready "Live run" block at the end of a real run — drop it straight into the issue.
+- udflow prints a paste-ready `Live run` block at the end of a real run — paste it into `EVIDENCE.md`, or into the issue form's **Run details** box (the form only adds run type, verdict, and reviewers).
 
 The open gate is in [`EVIDENCE.md`](EVIDENCE.md): **≥10 verified runs, across ≥3 projects, with ≥1 not by the maintainer.**
 

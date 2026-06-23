@@ -292,7 +292,7 @@ udflow **不送任何 telemetry**，所以一次真實 run 只有「寫下來」
 
 - **漏抓與誤報也要**，不是只收成功案例——誠實資料才是重點，也更可信。
 - 先把私有程式碼與密鑰 sanitize；私有 repo 用「sanitized stack + outcome」即可。
-- udflow 跑完真實任務會吐一段 paste-ready 的「Live run」區塊——直接貼進 issue 就好。
+- udflow 跑完真實任務會吐一段 paste-ready 的「Live run」區塊——貼進 `EVIDENCE.md`，或 issue 表單的 **Run details** 欄(表單另外只要選 run type、verdict、勾 reviewers)。
 
 升版門檻寫在 [`EVIDENCE.md`](EVIDENCE.md)：**≥10 verified runs、跨 ≥3 專案、其中 ≥1 不是 maintainer 跑的。**
 

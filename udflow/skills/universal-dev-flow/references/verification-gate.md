@@ -247,7 +247,9 @@ Honesty rules (extend the Run Card's "never fabricate"):
 
 ## Evidence Record (real runs only)
 
-When udflow actually ran the workflow on a **real task in an actual project** (not a throwaway demo or a benchmark experiment), also emit one compact, paste-ready record the user can drop into the project's `EVIDENCE.md` *Real-world runs* section — or a [`Verified udflow run`](.github/ISSUE_TEMPLATE/verified-run.yml) issue — with no reformatting. This is the only way real-use evidence gets logged: udflow ships no telemetry, so a run that isn't written down does not count.
+When udflow actually ran the workflow on a **real task in an actual project** (not a throwaway demo or a benchmark experiment), also emit a compact, paste-ready evidence record so the run can be logged with no reformatting. This is the only way real-use evidence gets logged: udflow ships no telemetry, so a run that isn't written down does not count. Emit two things:
+- the **`### Live run` block** below — paste it into the project's `EVIDENCE.md` *Real-world runs* section (or a PR that adds that section), and into the [`Verified udflow run`](.github/ISSUE_TEMPLATE/verified-run.yml) issue form's `Run details` box;
+- a short **issue-form sheet** — the few form choices the block doesn't carry (run type, verdict, reviewers), so the whole run files in three picks and one paste.
 
 ```markdown
 ### Live run — <YYYY-MM-DD> · <project / stack> (<language>) · verified live task
@@ -262,4 +264,19 @@ When udflow actually ran the workflow on a **real task in an actual project** (n
 - Cost: <~tokens / wall-clock> · Evidence: <commit / PR / sanitized log>
 ```
 
-Rules: emit it only when the workflow genuinely ran and verification was attempted; report findings and the verdict exactly as they were. **Never fabricate an outcome.** The *Missed* and *Outcome after follow-up* fields are honestly left for the user to fill later — udflow cannot know at finish time what (if anything) escaped the verdict. Omit this record for trivial edits, pure Q&A, and benchmark runs.
+### Verified-run issue form — three picks + one paste
+
+The [`Verified udflow run`](.github/ISSUE_TEMPLATE/verified-run.yml) form is short: two dropdowns, the reviewers checkboxes, and one `Run details` box that takes the whole `### Live run` block above. Field names are the form's exact labels — keep them and the option literals verbatim:
+
+```text
+1. Run type — [select] Live task
+2. Final udflow verdict — [select] READY | FIX REQUIRED | NOT READY | No formal verdict
+3. Reviewers involved — [check] <only the reviewers that ran>
+4. Run details — [paste] the whole `### Live run` block above (its header already carries date · stack · language; keep the Missed / False alarms / Outcome lines)
+5. Evidence or links — [paste] <commit / PR / sanitized log> · optional
+```
+
+- Marker words and prose follow the **user's language** (e.g. 〔貼〕 paste / 〔選〕 select / 〔勾〕 check); the **field names and option literals stay verbatim** so they match the GitHub form.
+- Keep this list in sync with [`.github/ISSUE_TEMPLATE/verified-run.yml`](.github/ISSUE_TEMPLATE/verified-run.yml) — that form is the source of truth for the fields and options.
+
+Rules: emit these records only when the workflow genuinely ran and verification was attempted; report findings and the verdict exactly as they were. **Never fabricate an outcome.** The *Missed* and *Outcome after follow-up* fields are honestly left for the user to fill later — udflow cannot know at finish time what (if anything) escaped the verdict. Omit them for trivial edits, pure Q&A, and benchmark runs.
