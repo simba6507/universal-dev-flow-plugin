@@ -3,6 +3,21 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.15.0]
+
+Make logging a real run **paste-friendly end to end**: slim the `Verified udflow run` issue form so a run files in as essentially three picks and one paste, and have udflow print a matching record at the end of a real run.
+
+### Changed
+- **`Verified udflow run` issue form slimmed to a paste-first shape** (`.github/ISSUE_TEMPLATE/verified-run.yml`): from 14 fields down to **two dropdowns (run type, final verdict) + a reviewers checkbox group + one required `Run details` textarea + an optional evidence/links box**. `Run details` is pre-seeded with the Live-run skeleton (date, stack, language, task, intent, verification, **caught**, **missed**, **false alarms**, **outcome**), so a contributor pastes udflow's `### Live run` block straight in or fills the skeleton. The honest-negatives prompts (Missed / False alarms / Outcome) are kept so the form still pulls more than just wins; the categorical fields stay structured for normalization and the graduation tally.
+- **Evidence Record intro no longer overstates** (`references/verification-gate.md`): it previously implied the single `### Live run` block could drop into *either* `EVIDENCE.md` *or* the issue "with no reformatting"; it now says the block pastes into `EVIDENCE.md` **and** the issue form's `Run details` box.
+- `CONTRIBUTING.md`, `README.md` / `README.zh-TW.md`: the contribute-a-run guidance matches the slimmer form (EN/zh in sync).
+
+### Added
+- **Issue-form sheet at the end of a real run** (`references/verification-gate.md`, Evidence Record): after the `### Live run` block, udflow now prints the few remaining form choices — `[select]` run type + verdict, `[check]` reviewers, `[paste]` the block into `Run details` — so "drop it straight into the issue" actually holds. Marker words / prose follow the user's language; field names + option literals stay verbatim; the sheet carries a "keep in sync with `verified-run.yml`" note.
+
+### Notes
+- Spec / docs / issue-template only — no code or hook change. `node --test`: 104 tests, 0 fail (102 pass / 2 skipped; the skip count is OS-symlink-privilege dependent). `node .github/scripts/validate-structure.mjs` passes — version agrees across `plugin.json` / `marketplace.json` / `package.json` / this CHANGELOG entry.
+
 ## [0.14.1]
 
 Docs-only — a bilingual README sync pass after 0.11.0–0.14.0.
