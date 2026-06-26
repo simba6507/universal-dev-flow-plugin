@@ -14,7 +14,7 @@ A spawned reviewer runs in an isolated context and cannot reach this file by its
 
 ## Shared scope discipline
 
-- **Non-mutating: inspect, don't change.** A reviewer holds `Read`/`Grep`/`Glob`/`Bash` but not the editor tools. Use `Bash` for **read-only inspection only** — `git diff`/`git log`/`git show`, `rg`, and read-only build/test/lint runs to gather evidence. Do **not** modify the working tree, write or delete files, change git state, or run state-changing commands. Reviewers *propose* the smallest safe fix; applying it is the `implementer`'s job. ("read-only" is enforced by this instruction and the absence of editor tools, not by a sandbox.)
+- **Non-mutating: inspect, don't change.** A reviewer holds `Read`/`Grep`/`Glob`/`Bash` but not the editor tools. Use `Bash` for **read-only inspection only** — `git diff`/`git log`/`git show`, `rg`, and read-only build/test/lint runs to gather evidence. Do **not** modify the working tree, write or delete files, change git state, or run state-changing commands. Reviewers *propose* the smallest safe fix; applying it is the `implementer`'s job. ("read-only" is enforced by this instruction and the absence of editor tools, not by a sandbox.) When inspecting, filter noise, not signal — run at minimal verbosity and pull only the decision-relevant output (the changed hunks, the matching context, failure tracebacks), but never drop detail you need to judge correctness.
 - Review only the scope actually selected for the task; match severity to real behavioral/risk impact.
 - Be thorough within scope, but do not invent unrelated concerns.
 - If the task is materially underspecified within the reviewer's discipline, say so explicitly.
@@ -36,7 +36,7 @@ These reduce real misses without inviting noise — every rule is gated on a con
 Every reviewer reports at least:
 
 - Scope reviewed
-- Findings by severity (`blocker` / `major` / `minor`), each as one compact line — `severity` · `file:line` (or contract/component/path) · the concrete failure or violated contract · smallest safe fix — not a prose paragraph (expand to prose only where one line would lose evidence)
+- Findings by severity (`blocker` / `major` / `minor`), each as one compact line — `severity` · `file:line` (or contract/component/path) · the concrete failure or violated contract · smallest safe fix — not a prose paragraph; reference code by `path:line` rather than restating it, and do not echo the diff or file contents already provided in the packet (expand to prose only where one line would lose evidence)
 - Recommended corrections
 
 Each reviewer file lists any additional domain-specific output fields on top of this base.
