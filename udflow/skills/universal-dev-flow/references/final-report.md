@@ -1,0 +1,169 @@
+# Final Report Contract
+
+The end-of-run report emitted at final delivery. Load this at final delivery time; the during-verification rules stay in `references/verification-gate.md`.
+
+For substantial tasks, end with the single report below. Write the labels and prose in the **user's language**, but keep the machine-checked literals verbatim: the verdict `READY` / `FIX REQUIRED` / `NOT READY`, the severities `blocker` / `major` / `minor`, and the sentinel tokens `udflow:verify=` / `udflow:delivery=`. The two sentinel lines are the machine-readable rollup the Stop hook reads, so they are the **last lines** in both renderings below. Same threshold throughout — omit the whole report for trivial edits and pure Q&A (which emit no sentinel tokens).
+
+The report has two renderings. **Compact is the default.** Emit the detailed tables only when the run was invoked with `--report full`.
+
+## Default (compact)
+
+Emitted unless `--report full` was passed. Summary one-liner · a Verification block (Checks table + acceptance-criteria line + a one-line cost summary) · a Findings severity table · the Final Verdict · then the two sentinel lines last. On a **real run**, the `### Live run` evidence block (see below) sits just above the footer.
+
+~~~markdown
+## Summary
+- what was implemented (and the net effect), one line
+
+## Verification
+
+**Checks** (exit status, not opinion):
+
+| Check | Result |
+|---|---|
+| `<command>` | ✅ pass / ❌ fail / ⚠️ unrun |
+
+- Acceptance criteria: ✅ <N/N met> · list any unmet/deferred (note user-consented deferrals) · "n/a" for trivial work — an unmet, non-deferred criterion is incompatible with READY
+- Cost: ~<new tokens> new tokens · tier: <lite | default | deep> (observed where surfaced, orchestrator estimated; no telemetry)
+- External capabilities: only when a required MCP / skill / subagent was unavailable — name it, the local fallback, and the resulting verification gap (omit the line entirely when none were needed or all were available). A real capability gap is decision-relevant, so it stays visible even in the compact report.
+
+## Findings
+
+| Severity | n | Detail |
+|---|--:|---|
+| 🔴 blocker | <n> | <one line, or "none"> |
+| 🟠 major | <n> | <one line, or "none"> |
+| 🟡 minor | <n> | <one line, or "none"> |
+
+## Final Verdict
+- pick one: ✅ **READY** · ⚠️ **FIX REQUIRED** · 🔴 **NOT READY**
+
+udflow:verify=<pass|fail|unrun|na>
+udflow:delivery=<held|shipped>
+~~~
+
+If blocked, add a `## Stuck Summary` (above the footer) with the unresolved blocker, attempted remedies, why progress is blocked, and what is needed next. On a real run, the `### Live run` block (see *Evidence Record* below) is emitted just above the footer.
+
+## `--report full`
+
+Opt in with `--report full` for the detailed tables. This is the compact report **plus** an Outcome table, a per-agent activity table, a Files Changed table, the full Cost table (with the `█`/`░` Share bar + Source + ~Cost columns), and Assumptions / Missing Tests / Risks / Failure Memory sections. The sentinel footer is still the last thing emitted.
+
+~~~markdown
+## Summary
+- what was implemented (and the net effect)
+
+**Outcome** — requirement → change → effect (verified effects only, else "to be confirmed"):
+
+| Requirement / acceptance criterion | What changed | Effect (before → after) |
+|---|---|---|
+| <the ask / AC1> | <the change> | <what is better now> |
+
+**Per-agent activity** (one row per agent/phase that actually ran):
+
+| Agent | What it did | Found | Fixed |
+|---|---|---|---|
+| implementer | <the change> | — | — |
+| spec-reviewer | <scope reviewed> | 🟠 <n major> · 🟡 <n minor> (or "none") | ✅ <applied, if any> |
+| gatekeeper | aggregated findings + verdict | <verdict + per-criterion acceptance> | — |
+
+## Files Changed
+
+| File | What / why |
+|---|---|
+| `<path>` | <one line> |
+
+## Assumptions
+- assumptions that affected design or implementation
+
+## Verification
+
+**Checks** (exit status, not opinion):
+
+| Check | Result |
+|---|---|
+| `<command>` | ✅ pass / ❌ fail / ⚠️ unrun |
+
+- Not run / uncertainty: exact blockers and remaining uncertainty for required checks not run
+- Acceptance criteria: ✅ <N/N met> · list any unmet/deferred (note user-consented deferrals) · "n/a" for trivial work — an unmet, non-deferred criterion is incompatible with READY
+- External capabilities: MCP / skills / subagents used; any unavailable, the local fallback, and the resulting verification gap — or "none"
+- UI/UX evidence: for UI work, the after-change screenshot (embed `![after](path)` or give the path) + a one-line before → after and the tool used; "no UI/UX impact" otherwise. Only a screen you actually captured — never fabricate one
+
+**Cost** (no telemetry — observed vs estimated). `Share` is a 10-cell `█`/`░` bar of the row's share of total tokens, from observed figures only:
+
+| Agent / phase | Tokens | Share | Source | ~Cost |
+|---|--:|---|---|--:|
+| <subagent> | <n> | `███░░░░░░░` <%> | observed | <~$ or —> |
+| orchestrator (main thread) | <n> | `███░░░░░░░` <%> | estimate | … |
+| **Total** | **<sum>** | `██████████` 100% | observed + estimate | **<~$ band>** · tier: <lite \| default \| deep> |
+
+## Findings
+
+| Severity | n | Detail |
+|---|--:|---|
+| 🔴 blocker | <n> | <one line, or "none"> |
+| 🟠 major | <n> | <one line, or "none"> |
+| 🟡 minor | <n> | <one line, or "none"> |
+
+## Missing Tests
+- required tests that do not exist (or "none")
+
+## Risks
+- known limitations or uncertainty (including any unresolved major + deferred items)
+
+## Failure Memory
+
+| Field | Value |
+|---|---|
+| Required | required / not required |
+| Reason | <why> |
+| Entry added | yes / no — <target file path when applicable> |
+
+## Final Verdict
+- pick one: ✅ **READY** · ⚠️ **FIX REQUIRED** · 🔴 **NOT READY**
+
+udflow:verify=<pass|fail|unrun|na>
+udflow:delivery=<held|shipped>
+~~~
+
+If blocked, add a `## Stuck Summary` (above the footer) with the unresolved blocker, attempted remedies, why progress is blocked, and what is needed next. On a real run, the `## Evidence Record` below is emitted just above the footer.
+
+The footer restates the report's decision so the human-readable report and the machine rollup cannot silently disagree: `udflow:delivery=` mirrors the Final Verdict (`held` unless the verdict is READY and you are shipping), and `udflow:verify=` is the verification rollup — `pass` only when every required check actually ran and exited zero, `fail` on a non-zero required check, `unrun` when a required check was claimed but never ran, `na` when no command checks were required. The command exit status is authority over reviewer prose: a `fail` / `unrun` required check is incompatible with READY and shipping. Keep both tokens and their values verbatim (machine-checked, like the verdict). This is true in **both** the compact and `--report full` renderings — the sentinel footer is always the last thing emitted.
+
+Cost honesty (no telemetry): subagent token figures are **observed** — the per-agent figure the harness surfaces for a finished subagent; if none is surfaced write "not reported", do not guess. The orchestrator (main-thread) figure is an **estimate**, so the grand total is itself an estimate. Figures are **new tokens** — the billable `/cost` total re-counts cached context every turn (~20–30× in tokens, but cache reads bill at ~a tenth of the input rate, so the dollar cost scales much closer to the new-token figure; don't over-scare). `~Cost` is a rough band, not a bill: state the assumed per-model rate(s) and date, or give tokens only and write "× your plan's rate". In the compact report this collapses to the one-line cost summary (new tokens + tier); `--report full` expands it into the per-agent Cost table.
+
+**Presentation.** Prefer tables for the list-like sections (Files Changed, Checks, Cost, Findings, Per-agent activity, Outcome, Failure Memory); keep Assumptions / Missing Tests / Risks as bullets — they are narrative, and a table would be forced. Add light, terminal-renderable cues: the `█`/`░` Share bar in the cost table (observed figures only — never bar an estimate or a "not reported"), and status glyphs (✅ pass · ❌ fail · ⚠️ unrun; 🔴 blocker · 🟠 major · 🟡 minor; ✅ / ⚠️ / 🔴 before the verdict). **Glyphs are decoration only — keep the machine-checked literals as plain words beside them** (`READY` / `FIX REQUIRED` / `NOT READY`, `blocker` / `major` / `minor`, the `udflow:` sentinels); replacing a literal with only a glyph blinds the Stop hook. Never let a table or bar imply precision the figures do not have (no telemetry).
+
+## Evidence Record (real runs only)
+
+When udflow actually ran the workflow on a **real task in an actual project** (not a throwaway demo or a benchmark experiment), also emit a compact, paste-ready evidence record so the run can be logged with no reformatting. This is the only way real-use evidence gets logged: udflow ships no telemetry, so a run that isn't written down does not count. Emit two things:
+- the **`### Live run` block** below — paste it into the project's `EVIDENCE.md` *Real-world runs* section (or a PR that adds that section), and into the [`Verified udflow run`](.github/ISSUE_TEMPLATE/verified-run.yml) issue form's `Run details` box;
+- a short **issue-form sheet** — the few form choices the block doesn't carry (run type, verdict, reviewers), so the whole run files in three picks and one paste.
+
+```markdown
+### Live run — <YYYY-MM-DD> · <project / stack> (<language>) · verified live task
+- Task: <one line: what udflow was asked to do>
+- Intent given: <the requirement / contract handed in — and how specific it was>
+- Reviewers: <which reviewers ran> · Verdict: <READY / FIX REQUIRED / NOT READY>
+- Verification: <commands / browser checks / tests actually run>
+- Caught: <real, valid findings udflow raised that were acted on>
+- Missed: <none known at finish — to confirm in follow-up use>
+- False alarms: <none, or describe any finding that was not a real defect>
+- Outcome after follow-up: <to be confirmed by the user once the change has lived in the codebase>
+- Cost: <~tokens / wall-clock> · Evidence: <commit / PR / sanitized log>
+```
+
+### Verified-run issue form — three picks + one paste
+
+The [`Verified udflow run`](.github/ISSUE_TEMPLATE/verified-run.yml) form is short: two dropdowns, the reviewers checkboxes, and one `Run details` box that takes the whole `### Live run` block above. Field names are the form's exact labels — keep them and the option literals verbatim:
+
+```text
+1. Run type — [select] Live task
+2. Final udflow verdict — [select] READY | FIX REQUIRED | NOT READY | No formal verdict
+3. Reviewers involved — [check] <only the reviewers that ran>
+4. Run details — [paste] the whole `### Live run` block above (its header already carries date · stack · language; keep the Missed / False alarms / Outcome lines)
+5. Evidence or links — [paste] <commit / PR / sanitized log> · optional
+```
+
+- Marker words and prose follow the **user's language** (e.g. 〔貼〕 paste / 〔選〕 select / 〔勾〕 check); the **field names and option literals stay verbatim** so they match the GitHub form.
+- Keep this list in sync with [`.github/ISSUE_TEMPLATE/verified-run.yml`](.github/ISSUE_TEMPLATE/verified-run.yml) — that form is the source of truth for the fields and options.
+
+Rules: emit these records only when the workflow genuinely ran and verification was attempted; report findings and the verdict exactly as they were. **Never fabricate an outcome.** The *Missed* and *Outcome after follow-up* fields are honestly left for the user to fill later — udflow cannot know at finish time what (if anything) escaped the verdict. Omit them for trivial edits, pure Q&A, and benchmark runs.

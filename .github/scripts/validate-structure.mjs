@@ -129,6 +129,32 @@ if (fs.existsSync(path.join(root, skillRel))) {
       fail(`SKILL.md names agent "${name}" but plugin.json agents[] does not wire agents/${name}.agent.md`);
   }
 }
+// 5d. the compact (default) final-report rendering must keep the machine contract — the sentinel
+// tokens and the verdict literals — inside its EMITTABLE template fence, not merely somewhere in the
+// file (the intro paragraph also names them in prose). The 0.21.0 split made references/final-report.md
+// their sole owner, and the compact block is what most runs emit by default; guard against a future edit
+// silently dropping them from the compact template (which would make the Stop hook go inert with every
+// other gate still green). Scope the check to the compact `~~~markdown` fence so a prose copy cannot mask
+// a real deletion, and fail CLOSED if the report structure moved (so the guard can't silently degrade).
+const finalReportRel = `${PLUGIN}/skills/universal-dev-flow/references/final-report.md`;
+if (fs.existsSync(path.join(root, finalReportRel))) {
+  const fr = fs.readFileSync(path.join(root, finalReportRel), "utf8");
+  const afterCompactHeading = fr.split(/^##\s+Default \(compact\)/m)[1];
+  // Bound to the compact section BEFORE matching the fence, so a deleted/mangled compact fence cannot
+  // fall through to the `--report full` fence (which also holds the literals) and silently pass green.
+  const compactSection = afterCompactHeading && afterCompactHeading.split(/^##\s+`--report full`/m)[0];
+  const fence = compactSection && compactSection.match(/~~~markdown\n([\s\S]*?)\n~~~/);
+  if (!fence) {
+    fail(`final-report.md: cannot locate the compact (Default) ~~~markdown template fence — the report structure changed; re-point the 5d sentinel guard`);
+  } else {
+    const compactFence = fence[1];
+    for (const tok of ["udflow:verify=", "udflow:delivery=", "READY", "FIX REQUIRED", "NOT READY"]) {
+      if (!compactFence.includes(tok))
+        fail(`final-report.md compact template is missing the machine-contract literal "${tok}" (the default report must keep the sentinel footer + verdict literals)`);
+    }
+  }
+}
+
 const hooksRel = `${PLUGIN}/hooks/hooks.json`;
 if (fs.existsSync(path.join(root, hooksRel))) {
   const hooksText = fs.readFileSync(path.join(root, hooksRel), "utf8");

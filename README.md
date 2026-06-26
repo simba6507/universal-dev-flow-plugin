@@ -153,6 +153,53 @@ Three things worth remembering:
 
 ---
 
+## Options & opt-ins
+
+Every knob in one place — what it does, its impact (cost / quality / behavior), and its default. Everything is **off / risk-proportional by default**; you only opt in. Detailed sections are linked rather than repeated.
+
+### Enable / disable
+
+| Option | Purpose | Impact | Default |
+|--------|---------|--------|---------|
+| Enable in `/plugin` (or `claude plugin enable udflow@kktmarketplace`) | The plugin ships `defaultEnabled: false`; installing does nothing until you enable it | Turns the hooks + skills on | **Disabled** |
+| `"udflow": { "planGate": false }` in a project's `.claude/settings.json` | Opt this project out of the plan-mode write gate (see [Plan gate](#plan-gate)) | Behavior: edits in plan mode are no longer blocked in this project only | Gate **on** (missing/malformed → on, fail-safe) |
+| `{ "enabledPlugins": { "udflow@kktmarketplace": false } }` in `~/.copilot/settings.json` | Disable udflow under **GitHub Copilot CLI only**, without affecting Claude Code (see [Compatibility](#compatibility)) | Behavior: udflow off in Copilot CLI | Enabled if installed |
+| `{ "disableAllHooks": true }` in `~/.copilot/settings.json` | Turn off **all** plugin hooks under Copilot CLI | Behavior: all plugin hooks off there | Hooks on |
+
+### Run flags — `/udflow:run <flags> <task>`
+
+| Flag | Purpose | Impact | Default |
+|------|---------|--------|---------|
+| `--deep` (also `deep:` / `ultra:`) | Tier-2 deep mode: adversarial verification of blocker/major findings + maximum reasoning effort (see [Deep mode](#deep-mode)) | ↑ recall on the hardest changes / ↑↑ cost + time | Off (Tier-1 deterministic enforcement still auto-engages on high-risk work when a Workflow capability is present) |
+| `--no-deep` / `--shallow` | Opt out of Tier-1 deterministic enforcement | Behavior: the panel still runs, but model-orchestrated instead of graph-enforced | Tier-1 auto-engages on high-risk work |
+| `--lite` | Smallest sufficient panel + skip deep mode | ↓ cost / disclosed recall tradeoff; keeps one directly-relevant safety reviewer on a high-risk signal | Off (panel is risk-proportional) |
+| `--report full` | Emit the detailed final report (per-agent activity, Files Changed, full cost table + share bar, Assumptions / Missing-Tests / Risks tables) | Output: more output tokens; analysis is unchanged | Off (compact report by default) |
+
+### Environment
+
+| Variable | Purpose | Impact | Default |
+|----------|---------|--------|---------|
+| `UDFLOW_HOOK_DEBUG=1` | Make the hooks write a trace (stderr / a temp file) for troubleshooting | Behavior: diagnostic output only | Unset (silent) |
+
+### Optional external capabilities (Detect → Use → Else-Disclose)
+
+All **off by default**, used only if present; the gap is disclosed if absent (see [Optional external capabilities](#optional-external-capabilities-detect--use--else-disclose)).
+
+| Capability | Purpose | Impact | Default |
+|------------|---------|--------|---------|
+| Per-reviewer MCP (`udflow/.mcp.json`; template `udflow/mcp.example.json`) | Give a reviewer read-only MCP tools | Quality: deeper inspection where wired; high context cost when enabled | Off (empty `.mcp.json`) |
+| Codex (cross-model second opinion / rescue) | A second model's review or a rescue pass | Quality: independent lens; data egress to the external model | Off (opt-in) |
+| `ui-ux-pro-max` skill | Design intelligence (styles, palettes, font pairings, UX) for UI work | Quality: better UI design when present; built-in baseline otherwise | Used if installed |
+
+### Files udflow reads (opt-in by creating them)
+
+| File | Purpose | Impact | Default |
+|------|---------|--------|---------|
+| `ai/FAILURE_MEMORY.md` (project) / `~/.claude/FAILURE_MEMORY.md` (global) | Past-failure lessons read on startup + during planning (see [Failure memory](#failure-memory)) | Quality: relevant lessons surface; no file → nothing happens | None (created on demand) |
+| Default plan mode in `~/.claude/settings.json` or `.claude/settings.json` | A hard, every-session plan-gate guarantee (see [Plan gate](#plan-gate)) | Behavior: plan gate always enforced | Not set (udflow drives plan mode itself; doesn't force it) |
+
+---
+
 ## How it works
 
 ```
@@ -233,7 +280,7 @@ Before it asks you to approve the plan, on **high-risk or correctness-critical**
 
 ### Verification gate
 
-Before any readiness claim, udflow runs the narrowest meaningful checks (build / test / lint / typecheck, browser evidence for UI). For behavior-changing code it expects a **focused test that exercises the change's risky edge inputs** — empty / zero / overflow / large, multibyte, null / empty / duplicate / multiple values, malformed input, by-value vs receiver, concurrency — because a test that reproduces the boundary catches the idiom/encoding/overflow/omission bugs a code read rationalizes as "looks fine." The `gatekeeper` treats a missing edge-test as a verification gap and withholds `READY`. It also surfaces a structured per-check rollup — `udflow:verify=pass|fail|unrun|na` — and treats the **real command exit status as authority over reviewer prose** (a red or unrun required check blocks `READY` no matter how clean the review reads), then ends substantial runs with a single user-visible **final report** — verdict, checks, acceptance, reviewers, findings, what remains, and approximate cost — closing with the machine-readable `udflow:verify=` / `udflow:delivery=` footer. For non-trivial work it also turns the requirement into a short **acceptance criteria** checklist you approve at the plan gate, and the `gatekeeper` checks each item — an unmet, non-deferred criterion blocks `READY` (the deepest release signal isn't "no bugs," it's *did what you asked, and confirmed it*). The same report lays out — in tables — what each agent did / found / fixed, a requirement → change → effect map, a per-agent **token & cost breakdown** with a grand total and an approximate dollar estimate (no telemetry: subagent figures are observed, the orchestrator figure and cost are estimates), and an after-change screenshot for UI work — with status glyphs, an inline token-share bar, and a mermaid token-split chart that renders in IDE / GitHub viewers.
+Before any readiness claim, udflow runs the narrowest meaningful checks (build / test / lint / typecheck, browser evidence for UI). For behavior-changing code it expects a **focused test that exercises the change's risky edge inputs** — empty / zero / overflow / large, multibyte, null / empty / duplicate / multiple values, malformed input, by-value vs receiver, concurrency — because a test that reproduces the boundary catches the idiom/encoding/overflow/omission bugs a code read rationalizes as "looks fine." The `gatekeeper` treats a missing edge-test as a verification gap and withholds `READY`. It also surfaces a structured per-check rollup — `udflow:verify=pass|fail|unrun|na` — and treats the **real command exit status as authority over reviewer prose** (a red or unrun required check blocks `READY` no matter how clean the review reads), then ends substantial runs with a single user-visible **final report** — verdict, checks, acceptance, reviewers, findings, what remains, and approximate cost — closing with the machine-readable `udflow:verify=` / `udflow:delivery=` footer. For non-trivial work it also turns the requirement into a short **acceptance criteria** checklist you approve at the plan gate, and the `gatekeeper` checks each item — an unmet, non-deferred criterion blocks `READY` (the deepest release signal isn't "no bugs," it's *did what you asked, and confirmed it*). The report is **compact by default** (summary, checks, acceptance, findings, a one-line cost summary, verdict); `--report full` expands it — in tables — into what each agent did / found / fixed, a requirement → change → effect map, a per-agent **token & cost breakdown** with a grand total and an approximate dollar estimate (no telemetry: subagent figures are observed, the orchestrator figure and cost are estimates), and an after-change screenshot for UI work, with status glyphs and an inline token-share bar.
 
 ### Failure memory
 

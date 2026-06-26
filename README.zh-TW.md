@@ -153,6 +153,53 @@ udflow> [實作] implementer 依計劃做最小變更。
 
 ---
 
+## 選項與 opt-in 總覽
+
+把每個旋鈕集中在一處——它做什麼、衝擊（成本 / 品質 / 行為）、預設值。所有東西**預設關閉 / 依風險比例**，要你才 opt in。詳細章節以連結代替重複。
+
+### 啟用 / 停用
+
+| 選項 | 用途 | 衝擊 | 預設 |
+|------|------|------|------|
+| 在 `/plugin` 啟用（或 `claude plugin enable udflow@kktmarketplace`） | plugin 以 `defaultEnabled: false` 出貨；只安裝不會做事，要啟用才生效 | 把 hooks + skills 打開 | **停用** |
+| 專案 `.claude/settings.json` 設 `"udflow": { "planGate": false }` | 讓此專案 opt-out plan mode 寫檔閘門（見 [計劃閘門](#計劃閘門)） | 行為：僅此專案在 plan mode 的改檔不再被擋 | 閘門**開啟**（缺失/壞掉 → 開啟，fail-safe） |
+| `~/.copilot/settings.json` 設 `{ "enabledPlugins": { "udflow@kktmarketplace": false } }` | **僅在 GitHub Copilot CLI** 停用 udflow，不影響 Claude Code（見 [相容性](#相容性)） | 行為：udflow 在 Copilot CLI 關閉 | 已安裝即啟用 |
+| `~/.copilot/settings.json` 設 `{ "disableAllHooks": true }` | 在 Copilot CLI 關閉**所有** plugin hook | 行為：該處所有 plugin hook 關閉 | hook 開啟 |
+
+### 執行旗標 —— `/udflow:run <flags> <task>`
+
+| 旗標 | 用途 | 衝擊 | 預設 |
+|------|------|------|------|
+| `--deep`（也可 `deep:` / `ultra:`） | Tier-2 深度模式：對 blocker/major 加對抗式驗證 + 最高 reasoning effort（見 [深度模式](#深度模式)） | ↑ 最難改動的 recall / ↑↑ 成本 + 耗時 | 關閉（具 Workflow 能力時，Tier-1 deterministic 強制仍會在高風險工作自動啟用） |
+| `--no-deep` / `--shallow` | Opt out Tier-1 deterministic 強制 | 行為：panel 仍會跑，但改為模型編排而非 graph 強制 | 高風險工作 Tier-1 自動啟用 |
+| `--lite` | 最小充分 panel + 跳過深度模式 | ↓ 成本 / 揭露的 recall 取捨；若有高風險訊號保留一個直接相關的 safety reviewer | 關閉（panel 依風險比例） |
+| `--report full` | 輸出詳細最終報告（逐 agent 活動、Files Changed、完整成本表 + 占比 bar、Assumptions / Missing-Tests / Risks 表格） | 輸出：更多 output token；分析本身不變 | 關閉（預設為精簡報告） |
+
+### 環境變數
+
+| 變數 | 用途 | 衝擊 | 預設 |
+|------|------|------|------|
+| `UDFLOW_HOOK_DEBUG=1` | 讓 hook 寫 trace（stderr / 暫存檔）以利除錯 | 行為：僅診斷輸出 | 未設（安靜） |
+
+### 選用的外部能力（Detect → Use → Else-Disclose）
+
+全部**預設關閉**，有才用；沒有則揭露缺口（見 [選用的外部能力](#選用的外部能力detect--use--else-disclose)）。
+
+| 能力 | 用途 | 衝擊 | 預設 |
+|------|------|------|------|
+| 每位審查員的 MCP（`udflow/.mcp.json`；範本 `udflow/mcp.example.json`） | 給審查員唯讀 MCP 工具 | 品質：接上處可更深入檢查；啟用時 context 成本高 | 關閉（空的 `.mcp.json`） |
+| Codex（跨模型第二意見 / 救援） | 第二個模型的審查或救援 pass | 品質：獨立視角；資料外送到外部模型 | 關閉（opt-in） |
+| `ui-ux-pro-max` skill | UI 工作的設計智慧（styles、palettes、font pairings、UX） | 品質：有它時 UI 設計更好；否則用內建 baseline | 已安裝即使用 |
+
+### udflow 會讀的檔（建立檔案即 opt-in）
+
+| 檔案 | 用途 | 衝擊 | 預設 |
+|------|------|------|------|
+| `ai/FAILURE_MEMORY.md`（專案）/ `~/.claude/FAILURE_MEMORY.md`（全域） | 開場與 planning 階段讀過去的失敗教訓（見 [失敗記憶](#失敗記憶)） | 品質：相關教訓浮現；沒檔就什麼都不做 | 無（按需建立） |
+| `~/.claude/settings.json` 或 `.claude/settings.json` 的預設 plan mode | 每個 session 都有的硬性計劃閘門保證（見 [計劃閘門](#計劃閘門)） | 行為：plan gate 永遠強制 | 未設（udflow 自行驅動 plan mode，不強制） |
+
+---
+
 ## 運作流程
 
 ```
@@ -233,7 +280,7 @@ udflow> [離開 plan mode] 現在才真的改 checkout.tsx ✓
 
 ### 驗證閘門
 
-在任何「就緒」宣稱之前，udflow 先跑最窄而有意義的檢查（build / test / lint / typecheck、UI 的瀏覽器佐證）。對行為改動，它會**要求一個聚焦測試去跑改動的高風險邊界輸入**——空 / 零 / 溢位 / 大、多位元組、null / 空 / 重複 / 多值、畸形、by-value vs receiver、並行——因為一個重現邊界的測試，才抓得到讀程式會被當成「看起來沒事」放過的慣用/編碼/溢位/遺漏型 bug。`gatekeeper` 會把「缺邊界測試」視為驗證缺口、不給 `READY`。它也會輸出結構化的逐項 rollup——`udflow:verify=pass|fail|unrun|na`——並以**真實命令 exit status 為權威、凌駕審查員觀感**（紅燈或未跑的 required check，不論審查多乾淨都擋 `READY`），並在實質任務收尾時給一份使用者可見的**最終報告**——verdict、checks、acceptance、reviewers、findings、剩餘項與近似成本——最後收在機器可讀的 `udflow:verify=`／`udflow:delivery=` footer。非瑣碎工作還會把需求轉成一份簡短的 **acceptance criteria** 清單、由你在 plan gate 核可，`gatekeeper` 再逐條檢查——任一未達成且未 deferred 的條目就擋 `READY`（最深的 release 訊號不是「沒 bug」，而是*做到了你要的、且被確認*）。同一份報告還用表格列出每個 agent 做了什麼／發現什麼／修了什麼、需求→改動→效果的對照、逐 agent 的 **token 與成本分項**加總計與粗略金額（無 telemetry：subagent 為實測、orchestrator 與金額為估算），UI 改動則附改變後截圖——並用狀態 glyph、inline token 占比 bar，以及在 IDE / GitHub 會 render 的 mermaid token 占比圖。
+在任何「就緒」宣稱之前，udflow 先跑最窄而有意義的檢查（build / test / lint / typecheck、UI 的瀏覽器佐證）。對行為改動，它會**要求一個聚焦測試去跑改動的高風險邊界輸入**——空 / 零 / 溢位 / 大、多位元組、null / 空 / 重複 / 多值、畸形、by-value vs receiver、並行——因為一個重現邊界的測試，才抓得到讀程式會被當成「看起來沒事」放過的慣用/編碼/溢位/遺漏型 bug。`gatekeeper` 會把「缺邊界測試」視為驗證缺口、不給 `READY`。它也會輸出結構化的逐項 rollup——`udflow:verify=pass|fail|unrun|na`——並以**真實命令 exit status 為權威、凌駕審查員觀感**（紅燈或未跑的 required check，不論審查多乾淨都擋 `READY`），並在實質任務收尾時給一份使用者可見的**最終報告**——verdict、checks、acceptance、reviewers、findings、剩餘項與近似成本——最後收在機器可讀的 `udflow:verify=`／`udflow:delivery=` footer。非瑣碎工作還會把需求轉成一份簡短的 **acceptance criteria** 清單、由你在 plan gate 核可，`gatekeeper` 再逐條檢查——任一未達成且未 deferred 的條目就擋 `READY`（最深的 release 訊號不是「沒 bug」，而是*做到了你要的、且被確認*）。這份報告**預設精簡**（summary、checks、acceptance、findings、一行成本摘要、verdict）；`--report full` 才展開成——用表格列出每個 agent 做了什麼／發現什麼／修了什麼、需求→改動→效果的對照、逐 agent 的 **token 與成本分項**加總計與粗略金額（無 telemetry：subagent 為實測、orchestrator 與金額為估算），UI 改動則附改變後截圖，並用狀態 glyph 與 inline token 占比 bar。
 
 ### 失敗記憶
 

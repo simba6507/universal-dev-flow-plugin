@@ -1013,6 +1013,35 @@ test("validate-structure: a missing SKILL-linked reference FAILS", () => {
   } finally { fs.rmSync(tree, { recursive: true, force: true }); }
 });
 
+test("validate-structure: dropping a sentinel from the compact final-report template FAILS (5d guard)", () => {
+  const tree = copyRepoTree();
+  try {
+    // The realistic single-edit regression: remove the verify sentinel from the compact (Default)
+    // template fence. The 5d guard must bite — and must NOT be masked by the intro-prose copy of the
+    // same literals. .replace() hits the FIRST occurrence, which is the compact fence (before the
+    // --report full fence), so this deletes it from the default rendering specifically.
+    const fr = path.join(tree, "udflow", "skills", "universal-dev-flow", "references", "final-report.md");
+    fs.writeFileSync(fr, fs.readFileSync(fr, "utf8").replace("udflow:verify=<pass|fail|unrun|na>", "verify status omitted"), "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "dropping a sentinel from the compact template fence must fail the build");
+    assert.match(out, /compact template is missing the machine-contract literal/, "the failure must name the 5d sentinel guard");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: a mangled compact final-report fence fails CLOSED (5d guard)", () => {
+  const tree = copyRepoTree();
+  try {
+    // Mangle the compact fence opener (first ~~~markdown = the compact fence). The region is bounded to
+    // the compact section, so the guard must fail CLOSED — not fall through to the --report full fence
+    // (which also holds the literals) and pass green.
+    const fr = path.join(tree, "udflow", "skills", "universal-dev-flow", "references", "final-report.md");
+    fs.writeFileSync(fr, fs.readFileSync(fr, "utf8").replace("~~~markdown", "```markdown"), "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "a mangled compact fence must fail closed, not fall through to the full fence");
+    assert.match(out, /cannot locate the compact \(Default\)/, "the failure must name the fail-closed fence guard");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
 test("validate-structure: a shipped forbidden artifact FAILS (distribution hygiene)", () => {
   const tree = copyRepoTree();
   try {
