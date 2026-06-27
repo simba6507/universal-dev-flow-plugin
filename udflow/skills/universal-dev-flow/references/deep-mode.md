@@ -45,13 +45,14 @@ When the Workflow capability is available:
 3. **Adversarial verification** — for each blocker/major finding, fan out 2–3 independent verifiers and keep only findings supported by a majority.
 4. **Loop-until-dry repair** — implement → verify → review repeats until a round produces no new blocker/major (still subject to the Auto-fix loop's hard iteration cap and Stuck Summary).
 5. **Effort** — run `gatekeeper` and `security-reviewer` at maximum reasoning effort; low-risk leaf reviewers use the default.
-6. **Live browser evidence** — when UI is in scope, drive the real browser (`references/browser-evidence.md`) as a *required* verification step (Detect → Use → Else-Disclose); an unavailable browser capability is a disclosed gap the gatekeeper weighs. This adds vision-token cost, consistent with Tier 2 being the cost-raising, opt-in tier.
+6. **App launch** — when verification needs a live process (a web app for browser evidence, or a backend/API server for integration checks) that is **not already running**, bring it up per `references/app-launch.md` (Detect → Use → Else-Disclose): attach if already up; else delegate to the built-in `/run` skill (then `mcp__Claude_Preview__*` `preview_start`, then a documented repo run command), auto-launching without a second prompt (`--deep` is the opt-in) but **disclosing** that it launched; tear down only what udflow started. An app that cannot be launched is a disclosed gap the gatekeeper weighs — never an error.
+7. **Live browser evidence** — when UI is in scope, drive the real browser (`references/browser-evidence.md`) as a *required* verification step (Detect → Use → Else-Disclose), after the app is reachable (item 6); an unavailable browser capability is a disclosed gap the gatekeeper weighs. This adds vision-token cost, consistent with Tier 2 being the cost-raising, opt-in tier.
 
 ## Else (no Workflow capability, or opted out)
 
 Run exactly the standard prose flow. **The enforcement guarantee is bounded to Workflow-capable sessions:** without the capability udflow cannot make the panel run deterministically — it falls back to model-orchestrated prose (the panel is still *selected* and *run*, just not graph-enforced). If Tier 1 would have auto-engaged (high-risk) but no capability exists, or if `--deep` (Tier 2) was requested and is unavailable, add one line of disclosure: the deterministic Workflow was unavailable, so the standard flow ran and the panel was model-orchestrated rather than graph-enforced. Never error on absence.
 
-When `--deep` + UI was requested, the **live browser-evidence obligation (Tier 2, item 6) still applies in this fallback** — it is a verification step keyed on `--deep` + UI scope, not a graph-enforcement node, so only the graph-enforcement is lost; an unavailable browser remains a disclosed gap the `gatekeeper` weighs.
+When `--deep` was requested, the **app-launch obligation (Tier 2, item 6) and the live browser-evidence obligation (Tier 2, item 7) still apply in this fallback** — they are verification steps keyed on `--deep` + a needed live process / UI scope, not graph-enforcement nodes, so only the graph-enforcement is lost; an app that cannot be launched, or an unavailable browser, remains a disclosed gap the `gatekeeper` weighs.
 
 ## Invariants in both modes
 
