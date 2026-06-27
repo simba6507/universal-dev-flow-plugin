@@ -43,6 +43,10 @@ Suggested mapping (all read-only):
 - `operability-reviewer`: observability MCP (Sentry/Datadog/Grafana) — production data is sensitive; read-only, minimal scope.
 - `spec-reviewer`: issue/PM tracker MCP (Jira/Linear/GitHub Issues).
 
+## App launch (sibling `/run` skill, `--deep` only)
+
+In `--deep` (Tier-2), when verification needs a live process (web app or backend/API) that is not already running, udflow brings it up rather than only attaching — see `references/app-launch.md`. It follows the same Detect → Use → Else-Disclose protocol and **delegates to the built-in `/run` skill** (which knows project-specific / per-stack launch patterns) rather than hardcoding launch commands; `mcp__Claude_Preview__*` `preview_start` and a documented repo run command are the fallbacks. It is never a hard dependency: an app that cannot be launched (or a launch that fails on missing config / auth) is a disclosed gap the `gatekeeper` weighs, never an error, and udflow tears down only the process it started. Standard mode never auto-launches.
+
 ## Live browser evidence (Claude in Chrome)
 
 For driving a real browser during UI verification, see `references/browser-evidence.md`. Detect a live browser capability in preference order: `mcp__Claude_in_Chrome__*` (preferred — the user's real Chrome), then `mcp__Claude_Preview__*` (a built dev-server preview), then `mcp__playwright__*` (headless, when a host has it wired). The **orchestrator / main thread drives it during Verification**; reviewers stay read-only and isolated and only *assess* the distilled evidence handed to them in the Review Packet (path + one-line observed result + console/network anomalies). It is never a hard dependency — when no live browser capability is connected, disclose the gap and continue (in `--deep` + UI this is the disclosed verification gap the `gatekeeper` weighs), never error.

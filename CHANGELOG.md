@@ -3,6 +3,20 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.25.0]
+
+Add a **`--deep` (Tier-2) app-launch step**: when verification needs a live process (web app or backend/API) that isn't already running, udflow now **brings the app up itself** instead of only attaching to one — then drives the existing browser-evidence / verification steps. Closes the previously-documented gap where udflow assumed the app was already running. Doc/contract only — **no new hook, no runtime code, no machine-token change**.
+
+### Added
+- **`references/app-launch.md` — new Tier-2 launch contract.** Detect → Use → Else-Disclose for bringing the target runtime up in `--deep`: **attach if already running** (never relaunch / tear down what udflow didn't start); else **delegate to the built-in `/run` skill** (preferred — it owns project-specific / per-stack launch patterns, so udflow keeps no launch-command table of its own), then `mcp__Claude_Preview__*` `preview_start`, then a documented repo run command. Because `--deep` is itself the opt-in, it **auto-launches without a second prompt** but **discloses** that it launched and how. Covers **UI + backend/API** scope. **Teardown:** owns only what it started and reaps cleanly (no lingering dev-server / watcher / MSBuild `VBCSCompiler` holding the output pipe). **Honest disclosure:** distinguishes "no launch capability" from **detected-but-could-not-execute** (a launch that fails on missing config / auth — e.g. an Entra `ClientId` gap → switched to a dev/test-auth profile), and forbids silently swapping auth/config profiles and presenting the result as if production config was exercised. Never a hard dependency: an un-launchable app is a disclosed gap the `gatekeeper` weighs, never an error.
+
+### Changed
+- **Wired the launch step into the Tier-2 flow.** `references/deep-mode.md` gains app-launch as Tier-2 *Use* item 6 (live-browser drive becomes item 7, after the app is reachable), and the obligation persists in the no-Workflow *Else* fallback (like the browser obligation). `references/browser-evidence.md` (*When it applies* + *Use*) now ensures the app is up first. `references/external-capabilities.md` registers `/run` as the sibling launch capability. `SKILL.md` adds the reference + a Verification-step line. `udflow/skills/run/SKILL.md` documents `--deep` auto-launch. Both READMEs: deep-mode bullet, `--deep` flag row, and a new `/run` capability row (EN ↔ zh-TW parity preserved).
+
+### Notes
+- **Standard mode is unchanged** — it never auto-launches; an unreachable app stays a documented gap exactly as before. Auto-launch is keyed strictly on `--deep` + a needed live process.
+- ask-only / best-effort posture and zero-standing-dependency stance unchanged; the three hooks, the `udflow:verify=` / `udflow:delivery=` sentinels, and the verdict/severity literals are byte-identical. `node --test`, `node .github/scripts/validate-structure.mjs`, and `claude plugin validate .` / `./udflow` green.
+
 ## [0.24.1]
 
 Extend the `destructive-guard` deny-list (0.24.0, item 11) to **PowerShell-native destructive cmdlets**. **Live Copilot CLI verification** (1.0.65, Windows) showed the model rewrites `rm -rf` into `Remove-Item -Recurse -Force`, which the POSIX-only deny-list missed — while git operations were already caught cross-platform and the guard's `ask` was confirmed honored under Copilot.

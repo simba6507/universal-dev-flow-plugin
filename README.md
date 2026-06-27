@@ -92,7 +92,7 @@ Key disciplines:
 - **Acceptance criteria** — the deepest signal isn't "no bugs", it's *did what you asked, and confirmed it*; an unmet, non-deferred criterion blocks `READY`.
 - **Verification sentinels** — substantial runs end with one final report + machine-readable `udflow:verify=pass|fail|unrun|na` and `udflow:delivery=held|shipped` (read by the Stop hook).
 - **Failure memory** — past lessons in `ai/FAILURE_MEMORY.md` (project) / `~/.claude/FAILURE_MEMORY.md` (global); a **title+tags digest** is injected at session start (retire an entry by ending its `###` title with `(expired)` / `(superseded …)`). Prevention-rule prose is read on demand, not injected.
-- **Deep mode** — **Tier 1** (auto on high-risk, Workflow-capable sessions): run the *same* panel + gatekeeper as a deterministic graph so it actually runs in order (≈ normal cost; opt out `--no-deep`). **Tier 2** (`--deep`): adversarial verification of blocker/major + max effort + required live-browser evidence for UI. Depth, not more reviewers.
+- **Deep mode** — **Tier 1** (auto on high-risk, Workflow-capable sessions): run the *same* panel + gatekeeper as a deterministic graph so it actually runs in order (≈ normal cost; opt out `--no-deep`). **Tier 2** (`--deep`): adversarial verification of blocker/major + max effort + required live-browser evidence for UI. When a needed live process (web app or backend/API) isn't running, Tier 2 also **brings the app up** — delegating to the built-in `/run` skill, then tearing down only what it started (auto + disclosed; never in standard mode). Depth, not more reviewers.
 
 ---
 
@@ -149,7 +149,7 @@ Everything is **off / risk-proportional by default** — you only opt in.
 
 | Flag | Effect | Default |
 |---|---|---|
-| `--deep` (also `deep:` / `ultra:`) | Tier-2: adversarial verification of blocker/major + max effort; with UI, drives live browser evidence | off (Tier-1 still auto-engages on high-risk) |
+| `--deep` (also `deep:` / `ultra:`) | Tier-2: adversarial verification of blocker/major + max effort; with UI, drives live browser evidence; **auto-launches the app** (web or backend/API) via `/run` when not already running, then tears down what it started | off (Tier-1 still auto-engages on high-risk) |
 | `--no-deep` / `--shallow` | opt out of Tier-1 deterministic enforcement (panel still runs, model-orchestrated) | Tier-1 auto on high-risk |
 | `--lite` | smallest sufficient panel + skip deep mode (keeps one safety reviewer on a high-risk signal) | off (panel is risk-proportional) |
 | `--report full` | detailed report: per-agent activity, Files Changed, full cost table (Input/Output/Cache-write/Cache-read), after-screenshots | off (compact report) |
@@ -169,6 +169,7 @@ Everything is **off / risk-proportional by default** — you only opt in.
 | Codex | cross-model second opinion / rescue pass (data egress to the external model) | off (opt-in) |
 | `ui-ux-pro-max` skill | design intelligence for UI; **required consult** for design-system / design-generation scope (else disclosed fallback) | used if installed |
 | Claude in Chrome (`mcp__Claude_in_Chrome__*`; alt `mcp__Claude_Preview__*` / `mcp__playwright__*`) | live browser evidence; required in `--deep` + UI. **Drives your real authenticated browser** — may expose secrets/PII; prefer a non-prod target | used if connected |
+| `/run` skill (sibling) | in `--deep`, starts the app (web or backend/API) for verification when it isn't already running; udflow delegates here instead of hardcoding launch commands, and tears down only what it started | used if available |
 | `output/udflow/` (consuming project) | kept run artifacts: `evidence/` screenshots, `review/diff.patch`, `progress.md` ledger — recommend you `.gitignore` it | created on demand |
 | `ai/FAILURE_MEMORY.md` / `~/.claude/FAILURE_MEMORY.md` | past-failure lessons read at startup + planning | created on demand |
 

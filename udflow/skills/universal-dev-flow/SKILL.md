@@ -44,6 +44,7 @@ Keep `SKILL.md` as the lightweight entry point. Read these references only when 
 - `references/external-capabilities.md`: before using any MCP tool, external subagent, or external skill (including `ui-ux-pro-max` for UI work).
 - `references/deep-mode.md`: before expressing the panel as a deterministic Workflow — Tier-1 enforcement auto-engages on high-risk work when the Workflow capability is present (opt-out); Tier-2 deeper verification (adversarial checks, max effort) is explicit opt-in.
 - `references/browser-evidence.md`: before driving a live browser for UI verification — Detect → Use → Else-Disclose for the Chrome extension; in `--deep` + UI in scope the live drive is required (else a disclosed gap).
+- `references/app-launch.md`: before bringing the app up in `--deep` when a needed live process (web app or backend/API) is not already running — delegate to `/run` (auto-launch + disclose + tear down only what udflow started); never auto-launches in standard mode.
 
 Do not deep-chain references. All required workflow references are linked from this file.
 
@@ -117,6 +118,7 @@ When touching human-readable text, check for mojibake, replacement characters, b
 4. Verification
    - Run applicable build, test, lint, typecheck, migration, integration, browser, or repo-specific checks.
    - For local browser-visible UI changes, use Claude in Chrome / in-app browser or an accepted fallback and record the target, scenario, observed result, tool used, screenshot need, and focus/hover/keyboard/clipboard behavior when relevant. In `--deep` + UI in scope, driving the live browser per `references/browser-evidence.md` is a required verification step (Detect → Use → Else-Disclose; absence is a disclosed gap); standard mode stays best-effort.
+   - In `--deep`, when a needed live process (web app or backend/API) is not already running, bring it up per `references/app-launch.md` before verifying — delegate to the built-in `/run` skill (auto-launch + disclose), then tear down only what udflow started. Standard mode never auto-launches; an unreachable app stays a documented gap. An app that cannot be launched is a disclosed gap the `gatekeeper` weighs, never an error.
    - For human-readable content, run text-integrity checks.
    - If a command or check cannot run, state the exact blocker and remaining uncertainty.
 
