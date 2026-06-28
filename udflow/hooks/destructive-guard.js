@@ -26,7 +26,7 @@ function debug(msg) {
 // cmdlet forms the model emits on Windows / Copilot CLI (Remove-Item -Recurse, Format-Volume, Clear-Disk).
 // Conservative like plan-gate's bashLooksLikePlanWrite: matched against the quote-stripped command, anchored
 // at start/space/separator, and deliberately NOT trying to catch interpreter one-liners (node -e / python -c),
-// $VAR/~/glob targets, separated flags (rm -r -f), `bash -c "…"` nesting, piped deletes (… | Remove-Item),
+// $VAR/~/glob targets, `bash -c "…"` nesting, piped deletes (… | Remove-Item),
 // cmd.exe `rd /s` / `del /s`, or a word-internal apostrophe
 // that mis-pairs the quote-stripper and blanks a real command (the SAME accepted miss plan-gate documents).
 // These are documented misses — tightening would add false positives, and this is a best-effort net that
@@ -47,6 +47,16 @@ function bashLooksDestructive(command) {
     /(?:^|[\s;&|])git\s+push\s+(?:[^;&|]*\s)?(?:--force(?![\w-])|--force-with-lease=?|-f\b)/i, // rewrites remote history (--force(?![\w-]) so a non-flag like --force-fast doesn't false-ask, while --force-with-lease still matches its own branch)
     // filesystem obliterators
     /(?:^|[\s;&|])rm\s+(?:-[A-Za-z]*\s+)*-[A-Za-z]*r[A-Za-z]*f|(?:^|[\s;&|])rm\s+(?:-[A-Za-z]*\s+)*-[A-Za-z]*f[A-Za-z]*r/i, // rm -rf / -fr (combined flags)
+    // rm with SEPARATED recursive + force flags in any order/spacing — `rm -r -f`, `rm -f -r`, `rm --recursive --force`,
+    // `rm -f --recursive`, etc. Requires BOTH a recursive flag (-r / -R / --recursive) AND a force flag (-f / --force) to be
+    // present after `rm` (separated by any non-separator run of args/flags, but not crossing a ;|& chain boundary), so a
+    // benign `rm file`, `rm -i file`, `rm -r dir` (recursive only), or `rm -f file` (force only) is NOT caught. High-confidence
+    // only: both flags together name an unrecoverable recursive force-delete, the same intent the combined `rm -rf` pattern owns.
+    // Accepted over-asks (ask-only, harmless — an extra confirmation, never a missed delete; refining them would need a
+    // tokenizer the pragmatism axiom rejects for a fail-open guard): `rm -- -r -f` (after `--` those tokens are filenames,
+    // not flags) and a newline-joined `rm -r …\n… -f` (a newline is not in the ;|& chain-boundary set) both ASK.
+    /(?:^|[\s;&|])rm\s+(?:[^;&|]*\s)?(?:-[A-Za-z]*r[A-Za-z]*\b|--recursive\b)[^;&|]*\s(?:-[A-Za-z]*f[A-Za-z]*\b|--force\b)/i, // recursive flag THEN force flag
+    /(?:^|[\s;&|])rm\s+(?:[^;&|]*\s)?(?:-[A-Za-z]*f[A-Za-z]*\b|--force\b)[^;&|]*\s(?:-[A-Za-z]*r[A-Za-z]*\b|--recursive\b)/i, // force flag THEN recursive flag
     /(?:^|[\s;&|])find\s[^;&|]*\s-delete\b/i,                                              // bulk delete by find
     /(?:^|[\s;&|])dd\s(?=[^;&|]*\bof=)(?![^;&|]*\bof=(?:\/dev\/null\b|NUL\b))/i,            // dd of=<real device/file> (exempt /dev/null, NUL; reused verbatim from plan-gate — a malformed double-of= with /dev/null anywhere is exempted, but last-of= wins so it'd write /dev/null anyway)
     /(?:^|[\s;&|])(?:mkfs(?:\.\w+)?|shred)\b/i,                                            // format / unrecoverable wipe

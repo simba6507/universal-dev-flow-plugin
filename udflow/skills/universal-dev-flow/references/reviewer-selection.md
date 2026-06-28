@@ -16,7 +16,7 @@ Add `code-reviewer` when the task touches:
 - maintainability-sensitive refactors
 - framework or library usage
 - async, concurrency, cancellation, or resource lifecycle handling
-- error handling, logging, configuration patterns
+- error handling, logging, configuration patterns — when `catch`/`except`/retry/fallback paths change, `code-reviewer` runs its **silent-failure lens** (empty catch, swallowed/broad catch, prod fallback-to-mock, silent retry exhaustion, log-and-continue; see `agents/code-reviewer.agent.md`)
 - data access, serialization, mapping, or performance-sensitive paths
 - code-quality or simplification claims on changed paths
 

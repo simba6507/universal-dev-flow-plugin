@@ -3,6 +3,33 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.27.0]
+
+Spirit-filtered self-improvement: sharpen the two proven weaknesses (omission/intent recall, test generation) and add two bounded defensive capabilities, without regressing leanness or the no-telemetry stance. **No new agent (roster stays 10); machine-checked tokens byte-identical.**
+
+### Added
+- **PreCompact fidelity hook** (`udflow/hooks/precompact-fidelity.js`, item G) — a fifth Node hook, fail-open / zero-dependency (built-ins only) / local-only, wired on `PreCompact`. Before a context compaction it injects a concise instruction-only block (no file read) telling the summary to preserve udflow's load-bearing constructs: reviewer/gatekeeper verdicts, acceptance-criteria state (met/unmet/deferred), `[unverified]` flags, Run Card numbers, subagent findings (as primary evidence), and unanswered requirements. Nonce-fenced + role-neutralized like `load-failure-memory.js`. Opt-out: `"udflow": { "preserveOnCompact": false }`.
+- **Fail-first test generation as a produced artifact** (item B) — `implementer` now generates one test confirmed to fail pre-change and pass post-change per behavior-changing acceptance criterion, recording the red→green transition; `verification-gate.md` upgrades the prior preference into a generation step (the UI/copy/config escape preserved — preference, not hard gate); `test-reviewer` drives the fill for any criterion still missing one.
+- **Silent-failure lens** (item I) — `code-reviewer` carries an explicit checklist (empty catch, swallowed/broad catch, prod fallback-to-mock, silent retry exhaustion, log-and-continue), gated by the Risk-Matrix error-handling/catch trigger; `reviewer-selection.md` notes the trigger.
+
+### Changed
+- **Bidirectional acceptance-criterion ↔ test ↔ change traceability** (item A) — `gatekeeper` and `spec-reviewer` now map each criterion to a verifying test (else a blocking omission) and each changed file to a criterion (else flagged scope creep), and grep-verify a claimed omission is actually absent before asserting it. Mirrored into the `reviewer-common.md` omissions discipline and the in-sync `review-packet.md` *Shared reviewer contract* block.
+- **"deferred ≠ missing"** (item C) — reviewers must not flag intentionally-deferred / out-of-scope / pending work as a missing-omission (`reviewer-common.md` + the mirrored `review-packet.md` block + its *Out of scope* field).
+- **Repair-loop precision** (item D) — `gatekeeper` validates each BLOCKER with one independent check before it drives `FIX REQUIRED`, and tags each applied fix Safe / Extended-Safe / **Residual** (public-API break or no test → never auto-applied, surfaced for the user). Reconciled with `deep-mode.md` Tier-2 (D is the lean always-on minimum beneath Tier-2's fuller adversarial fan-out); also surfaced in `SKILL.md` step 8.
+- **Regression ratchet** (item E) — `gatekeeper` computes `baseline_passing ∩ now_failing` and names the newly-failing tests; when test ids are unparseable the baseline stays empty and it makes **no claim** (only ever adds safety, never false-positives on ambiguity). Documented in `gatekeeper.agent.md` + `verification-gate.md`.
+- **Two-stage finding filter (lean)** (item F) — the existing `[unverified]` downrank is structured into a per-finding `{keep, confidence, justification}` contract plus a conservative deterministic pre-pass (drop only findings with no input/mechanism, or pure style already enforced by formatter/linter). Not a category-exclusion list; consistent with the existing downrank.
+- **Bounded destructive-guard hardening** (item H) — `destructive-guard.js` now `ask`s on **separated** destructive flags (`rm -r -f`, `rm -f -r`, `--recursive`/`--force` in any order/spacing) in addition to the combined `rm -rf`. Still `ask`-only and fail-open; a benign `rm file` / `rm -i file` / `rm -r dir` (recursive-only) / `rm -f file` (force-only) is still allowed. (Reverses the prior "separated flags are a documented miss" allowance, with the test updated to match.)
+- **README** (EN + zh-TW): hooks table 4 → 5 rows (new `precompact-fidelity.js` row), "Four Node hooks" → "Five", a `preserveOnCompact` opt-out row, and the destructive-guard row notes the separated-flag case; the Compatibility live-verification note is scoped to the four hooks then shipped (the new hook is unit-tested, not yet live-smoked under Copilot).
+- **SKILL.md** step 8: the "there is no persistence hook" line corrected — the PreCompact hook now injects the in-context preservation reminder (the progress ledger remains the persistence layer).
+
+### Fixed
+- `validate.yml` now `node --check`s **all five** hooks (adds `destructive-guard.js`, previously missing, and the new `precompact-fidelity.js`).
+- `RELEASING.md` manual smoke updated for the new hook: a **PreCompact** step added (step 5) and the stale "all three hooks" → "all five hooks", so the release checklist matches the shipped hook set.
+
+### Notes
+- **PreCompact live-path smoke — GREEN (12/12).** Beyond the direct unit tests, the hook was driven through the **verbatim `hooks.json` bootstrap** (`CLAUDE_PLUGIN_ROOT` / `COPILOT_PLUGIN_ROOT` resolution + a realistic PreCompact payload on stdin): manual and auto triggers emit a well-formed `hookEventName:"PreCompact"` block with the nonce fence and every preserved token, the opt-out suppresses live, and a missing plugin-root degrades to a clean no-op (`UDFLOW_HOOK_DEBUG` confirmed a real payload was processed, not a fail-open exit). **Remaining residual** (documented Claude Code platform behavior, not udflow code): that the compactor itself invokes PreCompact hooks — the same injection path as the live-verified SessionStart hook — is closed only by a clean-profile `/compact` with 0.27.0 enabled (RELEASING.md step 5).
+- Version bumped 0.26.2 → 0.27.0 in `plugin.json`, `package.json`, and `marketplace.json` (metadata + plugin entry). `node --test`, `node .github/scripts/validate-structure.mjs`, and `node --check` on all five hooks green; `claude plugin validate` is CI/best-effort. No hand-tag (CI owns tagging).
+
 ## [0.26.2]
 
 Cosmetic doc fix. The *Design contract* bullet added to `README.zh-TW.md` in 0.26.1 used two half-width `;` where the document's convention is the full-width `；` — corrected for EN ↔ zh-TW punctuation consistency. No content change.

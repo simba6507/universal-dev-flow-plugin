@@ -10,7 +10,7 @@ never tag by hand. This file is the **manual pre-release smoke** for the one thi
   `CHANGELOG.md` versions agree; SKILL-linked references and wired hooks exist; **hook wiring** (each
   lifecycle hook registered under the right event with a matcher that covers the tools/lifecycles it
   must fire for); distribution hygiene; text integrity; bilingual README parity.
-- `node --check` on all three hooks; `node --test` (behavioral hook tests).
+- `node --check` on all five hooks; `node --test` (behavioral hook tests).
 - `claude plugin validate` — **best-effort, non-blocking** (Linux-only; the Claude Code CLI may not
   run fully headless in CI).
 
@@ -35,7 +35,14 @@ In a throwaway/clean Claude Code profile, from a scratch project directory:
    **denied** with the plan-gate reason. Outside plan mode the same edit is allowed.
 4. **Stop / orchestration-check** — end a session that asserts a `READY` verdict without running the
    panel; confirm the advisory `systemMessage` appears (and that an honest run stays silent).
-5. **Skill activation** — describe a non-trivial engineering task in plain language and confirm the
+5. **PreCompact / compaction fidelity** — with `udflow` enabled, trigger a compaction (`/compact`, or
+   let auto-compaction fire on a long session) and confirm the preservation reminder is injected: a
+   `<<UDFLOW_PRESERVE_…>>` block naming reviewer/gatekeeper verdicts, acceptance-criteria state,
+   `[unverified]` flags, and the `udflow:verify=` / `udflow:delivery=` sentinels. With
+   `"udflow": { "preserveOnCompact": false }` in the project's `.claude/settings.json`, nothing should
+   appear. (The hook's I/O contract is unit-tested and smoke-verified through the verbatim `hooks.json`
+   bootstrap; this step confirms Claude Code's compactor actually fires the hook.)
+6. **Skill activation** — describe a non-trivial engineering task in plain language and confirm the
    `universal-dev-flow` skill engages (or `/udflow:run <task>` invokes it manually).
 
 If any step fails, do **not** rely on the release for that surface — fix and re-run. Note the result

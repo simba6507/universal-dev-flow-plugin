@@ -43,6 +43,8 @@ jobs:
           node --check udflow/hooks/plan-gate.js
           node --check udflow/hooks/load-failure-memory.js
           node --check udflow/hooks/orchestration-check.js
+          node --check udflow/hooks/destructive-guard.js
+          node --check udflow/hooks/precompact-fidelity.js
 
       - name: Run hook tests
         shell: bash

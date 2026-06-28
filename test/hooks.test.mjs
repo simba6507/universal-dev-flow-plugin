@@ -1545,10 +1545,42 @@ test("load-failure-memory: retired entries do not inflate the omitted count", ()
   assert.ok(!ctx.includes("retired one") && !ctx.includes("retired two"), "neither retired entry is injected");
 });
 
-test("destructive-guard: separated rm flags (rm -r -f) are a documented miss → ALLOW (intentional, conservative)", () => {
-  // Only combined -rf/-fr is caught; separated flags are deliberately not, to avoid the false-positive
-  // tightening the pragmatism axiom rejects. Locking this makes a future tightening a conscious change.
-  assert.strictEqual(dguard({ tool_name: "Bash", permission_mode: "default", tool_input: { command: "rm -r -f build" } }), "ALLOW", "rm -r -f is a documented miss (separated flags)");
+test("destructive-guard: separated rm flags (rm -r -f / rm -f -r / long forms) now ASK, while single-token rm -rf still asks", () => {
+  // 0.27.0 (item H): separated recursive+force flags in any order/spacing are an unrecoverable recursive
+  // force-delete, the same intent the combined rm -rf pattern already owns — high-confidence, so it ASKs.
+  for (const command of [
+    "rm -r -f build",
+    "rm -f -r ./dist",
+    "rm --recursive --force x",
+    "rm -f --recursive x",
+    "rm -r --force x",
+    "ls && rm -r -f node_modules",     // after a chain separator
+    "rm -r -f -v build",               // extra unrelated flag between/around them
+  ]) {
+    assert.strictEqual(dguard({ tool_name: "Bash", permission_mode: "default", tool_input: { command } }), "ASK", `should ask: ${command}`);
+  }
+  assert.strictEqual(dguard({ tool_name: "Bash", permission_mode: "default", tool_input: { command: "rm -rf x" } }), "ASK", "single-token rm -rf still asks");
+});
+
+test("destructive-guard: a single rm flag (recursive-only or force-only) stays ALLOW — no FP from the split-flag rule", () => {
+  // The split-flag rule requires BOTH a recursive AND a force flag; one alone, or the two split across a
+  // chain boundary, must NOT ask. Pins the high-confidence boundary so the new patterns can't creep into FPs.
+  for (const command of [
+    "rm -r dir",                       // recursive only
+    "rm -f file",                      // force only
+    "rm -rv dir",                      // recursive + verbose, no force
+    "rm -i file",                      // interactive, neither
+    "rm file.txt",                     // no flags
+    "rm report-final.txt",             // filename with r/f letters, not flags
+    "rm -r dir; rm -f file",           // r and f split across ';' -> not one recursive-force delete
+  ]) {
+    assert.strictEqual(dguard({ tool_name: "Bash", permission_mode: "default", tool_input: { command } }), "ALLOW", `should allow: ${command}`);
+  }
+});
+
+test("destructive-guard: separated-flag fail-open preserved (malformed stdin still no ask, no crash)", () => {
+  const out = cp.execFileSync("node", [DGUARD], { input: "not json {{{" }).toString();
+  assert.strictEqual(out.trim(), "", "unparseable input -> fail open (allow), never crash");
 });
 
 test("destructive-guard: PowerShell-native destructive forms (Windows/Copilot) ASK", () => {
@@ -1607,4 +1639,93 @@ test("enforce ON + stopHookActive (camelCase alias) => advisory, never blocks (l
   const r = orchEnv({ transcript_path: mkTranscript(GK_SHIP), stopHookActive: true }, { UDFLOW_ENFORCE_STOP: "1" });
   assert.ok(r && /gatekeeper's last verdict/.test(r.systemMessage), "still warns");
   assert.ok(!r.decision, "the camelCase stopHookActive re-entry flag must also suppress the block");
+});
+
+// --- precompact-fidelity PreCompact hook (item G) ---
+
+const PRECOMPACT = path.join(HOOKS, "precompact-fidelity.js");
+function precompact(input, env) {
+  let e = env;
+  if (!e) { e = { ...process.env }; delete e.CLAUDE_PROJECT_DIR; } // hermetic: ignore ambient project opt-out
+  const out = runHook(PRECOMPACT, input, e);
+  return out.trim() ? JSON.parse(out) : null;
+}
+
+test("precompact-fidelity: a normal PreCompact payload emits a nonce-fenced preservation block naming udflow's constructs", () => {
+  const r = precompact({ hook_event_name: "PreCompact", trigger: "auto", cwd: mkProject(null) });
+  assert.ok(r && r.hookSpecificOutput, "must emit hookSpecificOutput on a normal compaction");
+  assert.strictEqual(r.hookSpecificOutput.hookEventName, "PreCompact");
+  const ctx = r.hookSpecificOutput.additionalContext;
+  assert.match(ctx, /<<UDFLOW_PRESERVE_[0-9a-f]{16}>>/, "opening nonce delimiter present");
+  assert.match(ctx, /<<END_UDFLOW_PRESERVE_[0-9a-f]{16}>>/, "closing nonce delimiter present");
+  // Names the load-bearing constructs the plan requires preserved.
+  assert.ok(/READY \/ FIX REQUIRED \/ NOT READY/.test(ctx), "preserves reviewer/gatekeeper verdicts");
+  assert.ok(/met \/ unmet \/ deferred/.test(ctx), "preserves acceptance-criteria state");
+  assert.ok(/\[unverified\]/.test(ctx), "preserves the [unverified] flag literal");
+  assert.ok(/udflow:verify=/.test(ctx) && /udflow:delivery=/.test(ctx), "preserves the Run Card sentinels");
+  assert.ok(/PRIMARY EVIDENCE/.test(ctx), "treats subagent findings as primary evidence");
+  assert.ok(/UNANSWERED/.test(ctx), "preserves unanswered requirements");
+});
+
+test("precompact-fidelity: opt-out udflow.preserveOnCompact=false suppresses the block", () => {
+  const dir = mkProjectWithSettings({ udflow: { preserveOnCompact: false } });
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+  assert.strictEqual(precompact({ hook_event_name: "PreCompact", trigger: "manual" }, env), null,
+    "preserveOnCompact:false must suppress the preservation block");
+});
+
+test("precompact-fidelity: settings.local.json opt-out overrides settings.json", () => {
+  const dir = mkProjectWithSettings({ udflow: { preserveOnCompact: true } });
+  fs.writeFileSync(path.join(dir, ".claude", "settings.local.json"), JSON.stringify({ udflow: { preserveOnCompact: false } }), "utf8");
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+  assert.strictEqual(precompact({ hook_event_name: "PreCompact", trigger: "auto" }, env), null, "local override must take precedence");
+});
+
+test("precompact-fidelity: opt-out is honored via the event cwd when CLAUDE_PROJECT_DIR is unset (the normal path)", () => {
+  // The normal Claude Code path has no CLAUDE_PROJECT_DIR in env, so the hook resolves the project from the
+  // event's own `cwd` (precompact-fidelity.js: `if (!CLAUDE_PROJECT_DIR && parsed.cwd) cwd = parsed.cwd`).
+  // The precompact() helper strips CLAUDE_PROJECT_DIR when no env is passed, so this pins that branch — a
+  // regression breaking the env-absent opt-out resolution would otherwise pass CI silently.
+  const dir = mkProjectWithSettings({ udflow: { preserveOnCompact: false } });
+  assert.strictEqual(precompact({ hook_event_name: "PreCompact", trigger: "auto", cwd: dir }), null,
+    "with CLAUDE_PROJECT_DIR unset, the opt-out must be honored via the event cwd");
+});
+
+test("precompact-fidelity: malformed project settings fail safe to EMIT (a broken file never silently drops the nudge)", () => {
+  const dir = mkProjectWithSettings("{ not: valid json ");
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+  const r = precompact({ hook_event_name: "PreCompact", trigger: "auto" }, env);
+  assert.ok(r && r.hookSpecificOutput, "broken settings must fail safe toward emitting, not suppress");
+});
+
+test("precompact-fidelity: malformed stdin fails open (no output, no crash)", () => {
+  const out = cp.execFileSync("node", [PRECOMPACT], { input: "not json {{{" }).toString();
+  assert.strictEqual(out.trim(), "", "unparseable input -> fail open (emit nothing on bad input it can't anchor), never crash");
+});
+
+test("precompact-fidelity: oversized stdin fails open (no block emitted)", () => {
+  const big = "x".repeat(6 * 1024 * 1024);
+  const input = JSON.stringify({ hook_event_name: "PreCompact", trigger: "auto", filler: big });
+  const r = cp.spawnSync("node", [PRECOMPACT], { input, maxBuffer: 64 * 1024 * 1024 });
+  assert.strictEqual((r.stdout || "").toString().trim(), "", "over-cap stdin must fail open, not emit");
+});
+
+test("precompact-fidelity: the emitted block is valid, parseable JSON (flushed in full)", () => {
+  const r = precompact({ hook_event_name: "PreCompact", trigger: "manual" });
+  assert.ok(r && typeof r.hookSpecificOutput.additionalContext === "string" && r.hookSpecificOutput.additionalContext.length > 0,
+    "the additionalContext must be present and non-empty");
+});
+
+test("precompact-fidelity: empty stdin still emits (PreCompact may carry no body)", () => {
+  // A bare/empty payload must not suppress preservation — the hook should fail-open toward emitting.
+  const out = cp.execFileSync("node", [PRECOMPACT], { input: "" }).toString();
+  assert.ok(out.trim().length > 0, "an empty PreCompact payload should still emit the preservation block");
+  const j = JSON.parse(out);
+  assert.strictEqual(j.hookSpecificOutput.hookEventName, "PreCompact");
+});
+
+test("hooks.json wires precompact-fidelity.js under PreCompact", () => {
+  const hj = JSON.parse(fs.readFileSync(path.join(HOOKS, "hooks.json"), "utf8"));
+  const cmds = (hj.hooks.PreCompact || []).flatMap((e) => (e.hooks || []).map((x) => x.command || ""));
+  assert.ok(cmds.some((c) => /precompact-fidelity\.js/.test(c)), "PreCompact must invoke precompact-fidelity.js");
 });
