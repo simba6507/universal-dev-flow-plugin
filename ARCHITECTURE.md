@@ -114,7 +114,13 @@ are the higher-risk, less-defended edges** — the rest of this section names th
   controls reproduce run-to-run. Those fixtures are *deliberately unambiguous*, though; genuinely
   *ambiguous / subtle* cases DO vary (the real-world benchmark saw a reviewer flip on a subtle soundness
   bug). So anchor release confidence on the deterministic checks; treat a single judgment-layer `READY` as
-  advisory, not proof — re-running converges on clear cases, less so on borderline ones.
+  advisory, not proof — re-running converges on clear cases, less so on borderline ones. *A targeted
+  improvement was tested and rejected on the evidence:* an explicit "verdict-stability" gatekeeper clause
+  was A/B'd (old vs new rule, K=5 each) on contested-but-green-spine scenarios (a hedged perf finding; a
+  non-unanimous nil-deref) — the **existing** gatekeeper was already **5/5 consistent** under both rules
+  (`READY`, correctly), so the clause added no measurable stability and was **not shipped**. The stability
+  on these cases already comes from the existing *downrank-unconfirmed* + *command-evidence-authority*
+  rules, not a special clause — adding redundant prose would be gold-plating.
 - **Recall scales with intent, not effort.** With no/weak intent the lone-reviewer floor is low
   (~30% bug-blind); recall rises only when the Review Packet carries contract-level intent. The
   near-zero false-positive rate is the robust strength; exhaustive recall is not the claim.
