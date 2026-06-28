@@ -119,13 +119,14 @@ Key disciplines:
 
 ## Hooks
 
-Four Node hooks — **all fail-open** (any error, or no Node on PATH → they do nothing, never break a session) and **local-only** (no network, no subprocess, no downloaded code; built-in `fs`/`os`/`path`/`crypto` only). They run in *every* enabled session, not only udflow tasks.
+Five Node hooks — **all fail-open** (any error, or no Node on PATH → they do nothing, never break a session) and **local-only** (no network, no subprocess, no downloaded code; built-in `fs`/`os`/`path`/`crypto` only). They run in *every* enabled session, not only udflow tasks.
 
 | Hook (event) | What it can do | Default · opt-out |
 |---|---|---|
 | `plan-gate.js` (PreToolUse) | **deny** edits + *obvious* Bash writes **while in plan mode**; exempts `~/.claude/plans/` | on · `"udflow":{"planGate":false}` |
-| `destructive-guard.js` (PreToolUse) | **ask** (never deny) before unrecoverable Bash in **any** mode: `rm -rf`, `git reset --hard`, `git push --force`, `find -delete`, `dd of=`, `mkfs`, `shred` — plus the PowerShell forms `Remove-Item -Recurse` / `Format-Volume` / `Clear-Disk` (Windows / Copilot) | on · `"udflow":{"destructiveGuard":false}` |
+| `destructive-guard.js` (PreToolUse) | **ask** (never deny) before unrecoverable Bash in **any** mode: `rm -rf` (incl. separated `rm -r -f`), `git reset --hard`, `git push --force`, `find -delete`, `dd of=`, `mkfs`, `shred` — plus the PowerShell forms `Remove-Item -Recurse` / `Format-Volume` / `Clear-Disk` (Windows / Copilot) | on · `"udflow":{"destructiveGuard":false}` |
 | `load-failure-memory.js` (SessionStart) | **read** your `FAILURE_MEMORY.md` and inject a nonce-fenced, role-neutralized digest into your own session | on · no file → no-op |
+| `precompact-fidelity.js` (PreCompact) | **inject** a concise instruction so a context compaction preserves udflow's own constructs (reviewer verdicts, acceptance-criteria state, `[unverified]` flags, Run Card numbers, subagent findings, unanswered requirements) — instruction only, no file read | on · `"udflow":{"preserveOnCompact":false}` |
 | `orchestration-check.js` (Stop) | **advise** at session end: warns on a `READY` claim without the panel, an unhonored block verdict, or a red/unrun required check while delivering | advisory · hard-blocks only with `UDFLOW_ENFORCE_STOP` |
 
 - **What they never do:** change system/security settings, alter file permissions, delete anything (`destructive-guard` only *prompts before* your own delete/wipe commands — it never deletes), or transmit your code or transcript anywhere.
@@ -144,6 +145,7 @@ Everything is **off / risk-proportional by default** — you only opt in.
 | Enable in `/plugin` (or `claude plugin enable udflow@kktmarketplace`) | turns hooks + skills on | **disabled** |
 | `"udflow": { "planGate": false }` in `.claude/settings.json` | this project's plan-mode write gate off | gate **on** (missing/malformed → on) |
 | `"udflow": { "destructiveGuard": false }` in `.claude/settings.json` | this project's destructive-command prompt off | guard **on** (missing/malformed → on) |
+| `"udflow": { "preserveOnCompact": false }` in `.claude/settings.json` | this project's compaction-fidelity nudge off | nudge **on** (missing/malformed → on) |
 | `{ "enabledPlugins": { "udflow@kktmarketplace": false } }` in `~/.copilot/settings.json` | disable under **Copilot CLI only** | enabled if installed |
 | `{ "disableAllHooks": true }` in `~/.copilot/settings.json` | all plugin hooks off under Copilot | hooks on |
 
@@ -199,7 +201,7 @@ Two very different numbers — ballparks from our own runs (orders of magnitude,
 
 ## Compatibility
 
-udflow targets **Claude Code**; its **subagents** and **skills** also load under **GitHub Copilot CLI** (live-verified 1.0.65, 2026-06-26 — `plugin list`, `skill list`, all subagents enumerated, all four hooks observed firing). Cross-harness loading is derived from each tool's documented plugin format.
+udflow targets **Claude Code**; its **subagents** and **skills** also load under **GitHub Copilot CLI** (live-verified 1.0.65, 2026-06-26 — `plugin list`, `skill list`, all subagents enumerated, the four hooks then shipped observed firing; the later `precompact-fidelity.js` PreCompact hook is unit-tested but not yet live-smoked under Copilot). Cross-harness loading is derived from each tool's documented plugin format.
 
 **Claude-Code-only** (degrade gracefully elsewhere — never an error):
 

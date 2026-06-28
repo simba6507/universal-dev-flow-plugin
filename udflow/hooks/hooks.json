@@ -22,6 +22,14 @@
         ]
       }
     ],
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          { "type": "command", "command": "node -e \"try{var r=process.env.CLAUDE_PLUGIN_ROOT||process.env.COPILOT_PLUGIN_ROOT||process.env.PLUGIN_ROOT;if(r)require(r+'/hooks/precompact-fidelity.js')}catch(e){process.exit(0)}\"" }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

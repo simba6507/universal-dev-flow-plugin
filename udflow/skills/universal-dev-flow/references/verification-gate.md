@@ -13,7 +13,7 @@ Run the narrowest meaningful checks for the task:
 
 **Exercise the change's risky inputs — do not rely on reading the code.** Most defects that survive review are only visible when the boundary case actually *runs*, not when the code is read: empty / zero / overflow / very-large values, multibyte or non-ASCII text, null or empty collections, duplicate or multiple values (e.g. repeated headers), malformed input, by-value vs by-reference / receiver use, and concurrent access. For behavior-changing code, add or run a focused test that feeds the specific edge inputs the change implies and assert the expected result — a test that reproduces the boundary is the oracle a static read lacks, and it is what catches subtle idiom/encoding/overflow/omission bugs that a reviewer rationalizes as "looks fine".
 
-For a **behavior-changing acceptance criterion**, prefer a demonstrating test you confirmed **fails without the change and passes with it** (run it against the pre-change state, or assert the bug-reproducing input) — a test shown to fail first is the strongest proof the behavior was actually *absent* before, which is exactly what an omission defect needs. Where a clean fail-first→pass is impractical (much UI, copy, or config has no such red-green), say so rather than manufacturing one; this is a preference, not a hard gate.
+For each **behavior-changing acceptance criterion**, **generate** a demonstrating test you confirmed **fails without the change and passes with it** (run it against the pre-change state, or assert the bug-reproducing input), and **record that red→green transition** as the criterion's evidence — a test shown to fail first is the strongest proof the behavior was actually *absent* before, which is exactly what an omission defect needs. This is now a produced artifact per behavior-changing criterion, not just an after-the-fact check: the criterion → verifying-test mapping is what the `gatekeeper`'s bidirectional traceability reads (`agents/gatekeeper.agent.md`, *Acceptance-criteria check*), and `test-reviewer` drives the fill for any criterion still missing one. Where a clean fail-first→pass is impractical (much UI, copy, or config has no such red-green), say so rather than manufacturing one; this is a **preference, not a hard gate** — disclose the criterion and the captured command/observed-behavior evidence used instead.
 
 On high-risk work, this edge-input set is enumerated up front by the plan-grounding step (`references/plan-grounding.md`) as the change's **implied edge checklist** and carried here, so the boundary tests are planned rather than improvised at verification time.
 
@@ -38,6 +38,12 @@ On a **repair iteration** (the auto-fix loop, `SKILL.md` step 8), re-run only th
 2. In the per-check table, mark a **carried-forward-green** check distinctly from a **re-ran-green** one — never silently present a prior pass as if it ran this iteration.
 
 This is *filter noise, not signal* applied across iterations: it changes which checks re-run mid-loop, never the final full-suite guarantee.
+
+## Regression ratchet (baseline-passing ∩ now-failing)
+
+A fix can turn a previously-green test red. When test ids are parseable from the runner output, the `gatekeeper` computes `baseline_passing ∩ now_failing` — the set of tests that passed on the pre-change baseline but fail now — and treats any non-empty intersection as a blocking regression, **naming the newly-failing tests** (`agents/gatekeeper.agent.md`, *Regression ratchet*). This pairs with the final full-suite re-run above: the full set runs, and the ratchet checks that nothing that used to pass now fails.
+
+**It only ever adds safety; it never false-positives on ambiguity.** If individual test ids cannot be parsed from the output (an opaque runner, a summary-only count, an unparseable format), the baseline stays **empty** and the ratchet makes **no claim** — it does not guess a regression from a changed pass-count. The command exit status (above) remains the authority in that case; the ratchet is a strictly additive, name-the-regressions layer on top, not a replacement for it.
 
 ## Browser Evidence
 

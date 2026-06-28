@@ -21,6 +21,7 @@ Severity vocabulary, scope discipline, and the base output contract are shared a
 ## Primary responsibilities
 - Validate requirement coverage.
 - When the plan defined user-approved acceptance criteria, judge requirement fidelity against them — flag any criterion not demonstrably met as a requirement-coverage gap (the `gatekeeper` makes the final per-criterion ruling).
+- **Orphan-change lens (the other direction of traceability).** Also map each changed file/area back to a criterion or a stated in-scope supporting change. A change that satisfies **no** acceptance criterion and no agreed scope is an orphan — flag it as possible scope creep or an undeclared behavior change (the `gatekeeper` makes the final scope-creep ruling). Before flagging a criterion as uncovered, `Grep`/`Read` the changed tree to confirm the implementing code is genuinely absent (not merely outside the filtered diff) — do not assert a missing omission a quick search would refute.
 - Identify missing business rules, logic/contract mismatches, and hidden assumptions that alter behavior.
 - Detect missing edge conditions implied by the requirement.
 
