@@ -38,7 +38,7 @@ Task → Understand → Plan mode (no code yet) → [high-risk] ground in code +
 <details>
 <summary><b>Evidence — method &amp; limits</b></summary>
 
-Reviewers were run **blind** on the pre-fix code of real historical bugs across 6 languages / many external repos; an independent judge scored findings against the known fix. Top miss categories (77-bug corpus): omissions 36% · found a *different* real bug 18% · language idioms 16% · under-rated 15% · needs-external-spec 15%. Limits: bugs mostly from `fix` commits; concurrency/integration barely tested; many runs used a single reviewer with no plan context — all of which *understate* a full run. Full method + per-run logs in [`EVIDENCE.md`](EVIDENCE.md) (manual log — udflow ships **no telemetry**). Honest label: a *characterized* early/beta — directional, not a guarantee.
+Reviewers were run **blind** on the pre-fix code of real historical bugs across 6 languages / many external repos; an independent judge scored findings against the known fix. Top miss categories (77-bug corpus): omissions 36% · found a *different* real bug 18% · language idioms 16% · under-rated 15% · domain-knowledge 15%. Limits: bugs mostly from `fix` commits; concurrency/integration barely tested; many runs used a single reviewer with no plan context — all of which *understate* a full run. Full method + per-run logs in [`EVIDENCE.md`](EVIDENCE.md) (manual log — udflow ships **no telemetry**). Honest label: a *characterized* early/beta — directional, not a guarantee.
 
 </details>
 
@@ -183,7 +183,7 @@ Everything is **off / risk-proportional by default** — you only opt in.
 
 ## Cost per run
 
-Two very different numbers — ballparks from our own runs (orders of magnitude, not guarantees):
+Two very different numbers — order-of-magnitude ballparks for **typical real-app** work, not guarantees. (Cross-checking [`EVIDENCE.md`](EVIDENCE.md) you'll see *lower* logged figures: those runs are on udflow's own small Markdown/Node repo with scoped edits — ~0.1–1.5M new tokens, the floor of this table. Scale up for larger codebases, complex logic, and more repair loops; the ~47M figure below is a whole P0–P3 build across ~7 runs, not one.)
 
 - **New tokens** — first-time-processed (input + cache-creation + output). Tracks the real work; plan around this.
 - **Billable total** (`/cost`) — *also* counts cache-reads re-contributed every turn by every agent → **~20–30× the new-token figure**. But cache reads bill at ~⅒ the input rate, so **dollars scale much closer to new tokens** than that multiple implies.
