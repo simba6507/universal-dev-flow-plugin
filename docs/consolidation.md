@@ -54,7 +54,7 @@ stop. When in doubt, it's blocked.
 ## Exit criteria
 
 **Un-freeze (may resume capability work) when ALL hold:**
-- [ ] L1 regression guards are in CI and green (prose drift is caught automatically).
+- [x] L1 regression guards are in CI and green (prose drift is caught automatically). — `validate-structure.mjs` **5f contract-invariant guard**: asserts the verbatim machine literals (verdict / severity / sentinel tokens) survive in the files that own them (gatekeeper, reviewer-common, reviewer-selection, SKILL.md).
 - [ ] README 60-second value + reconciled cost section shipped.
 - [ ] Surface-area audit complete (consolidation pass done).
 - [ ] A current-build re-test number is published in `EVIDENCE.md`.

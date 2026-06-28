@@ -179,6 +179,35 @@ if (fs.existsSync(path.join(root, finalReportRel))) {
   }
 }
 
+// 5f. Contract-invariant guard — the machine-checked literals that SKILL.md's Language-And-Text-Integrity
+// rule marks as verbatim / never-translate (the verdict, the severities, the sentinel tokens) must survive
+// in the files that OWN them, so a prose edit can't silently gut the contract while every other gate stays
+// green — the "prose drift caught only by luck" gap the consolidation freeze (docs/consolidation.md, L1)
+// closes. Deliberately NARROW + high-confidence: only literals that are contractually immutable are
+// asserted, so a legitimate reword can never false-trip this (pragmatism axiom — a false CI failure is
+// worse than a documented miss). Complements 5d (which guards only the final-report compact fence) by
+// covering the other contract-bearing files. Substring match is sufficient: these tokens are immutable, so
+// presence anywhere in the owning file is the invariant.
+const CONTRACT_INVARIANTS = {
+  [`${PLUGIN}/agents/gatekeeper.agent.md`]: ["READY", "FIX REQUIRED", "NOT READY"],
+  [`${PLUGIN}/skills/universal-dev-flow/references/reviewer-common.md`]: ["blocker", "major", "minor"],
+  [`${PLUGIN}/skills/universal-dev-flow/references/reviewer-selection.md`]: ["spec-reviewer", "test-reviewer"],
+  [`${PLUGIN}/skills/universal-dev-flow/SKILL.md`]: [
+    "udflow:verify=", "udflow:delivery=",
+    "READY", "FIX REQUIRED", "NOT READY",
+    "blocker", "major", "minor",
+  ],
+};
+for (const [rel, phrases] of Object.entries(CONTRACT_INVARIANTS)) {
+  const abs = path.join(root, rel);
+  if (!fs.existsSync(abs)) { fail(`contract-invariant guard: ${rel} is missing (cannot verify its machine-checked literals)`); continue; }
+  const text = fs.readFileSync(abs, "utf8");
+  for (const p of phrases) {
+    if (!text.includes(p))
+      fail(`contract-invariant guard: ${rel} no longer contains the machine-checked literal "${p}" — a prose edit dropped a load-bearing contract token (see SKILL.md Language-And-Text-Integrity)`);
+  }
+}
+
 const hooksRel = `${PLUGIN}/hooks/hooks.json`;
 if (fs.existsSync(path.join(root, hooksRel))) {
   const hooksText = fs.readFileSync(path.join(root, hooksRel), "utf8");
