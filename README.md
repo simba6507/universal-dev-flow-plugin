@@ -220,7 +220,7 @@ udflow targets **Claude Code**; its **subagents** and **skills** also load under
 
 | Feature | Under Copilot CLI |
 |---|---|
-| Plan-gate enforcement | no-op (Copilot has no `plan` permission mode) |
+| Plan-gate enforcement | no-op — Copilot CLI/desktop **has** a Plan mode (Shift+Tab), but its `preToolUse` hook input carries **no permission-mode field** ([hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference)), so the gate can't detect the plan state; Copilot's own Plan mode still gates edits independently |
 | Deep-mode Workflow | no-op (no Workflow capability) |
 | Failure-memory auto-digest | no-op — Copilot runs hooks but **doesn't surface injected output**; falls back to manual retrieval during planning |
 | Compaction-fidelity (`SessionStart`·`compact`) hook | no-op — same class as the digest: the hook **loads** but Copilot doesn't surface `SessionStart` injected output; it fails open, never errors. (On Claude Code it now works — relocated from `PreCompact` in 0.27.3, whose injected output Claude Code rejected with a validation error.) The `output/udflow/progress.md` ledger is the continuity fallback |
