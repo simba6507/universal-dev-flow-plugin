@@ -226,7 +226,7 @@ udflow 以 **Claude Code** 為目標,其 **subagents** 與 **skills** 也能在 
 
 | 功能 | 在 Copilot CLI 下 |
 |---|---|
-| 計劃閘門強制 | no-op（Copilot 無 `plan` permission mode） |
+| 計劃閘門強制 | no-op —— Copilot CLI／桌面版**有** Plan 模式（Shift+Tab）,但其 `preToolUse` hook 輸入**不含 permission-mode 欄位**（[hooks 文件](https://docs.github.com/en/copilot/reference/hooks-reference)）,udflow 閘門無從偵測 plan 狀態;Plan 模式下的編輯限制由 Copilot 自身負責 |
 | 深度模式 Workflow | no-op（無 Workflow 能力） |
 | 失敗記憶自動 digest | no-op —— Copilot 會跑 hook 但**不交付注入輸出**；降級為 planning 時手動讀取 |
 | 壓縮保真（`SessionStart`·`compact`）hook | no-op —— 與 digest 同類：hook 會**載入**,但 Copilot 不送達 `SessionStart` 注入輸出;它 fail-open、絕不報錯。（在 Claude Code 上現在可運作 —— 0.27.3 由 `PreCompact` 搬遷而來,後者的注入輸出曾被 Claude Code 以驗證錯誤拒絕。）`output/udflow/progress.md` ledger 是連續性後備 |
