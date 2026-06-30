@@ -1,0 +1,157 @@
+// Deterministic retrieval oracle for the failure-memory targeted-retrieval seam (scripts/failure-retrieve.mjs).
+// Two layers: (1) unit tests pinning tokenize / parse / score / retrieve behavior and the fail-open
+// contract; (2) the committed eval (eval/failure-memory/) — for each seeded lesson a task signature must
+// rank it #1 and unrelated/retired lessons must not surface. This is the evidence that the mechanism
+// actually surfaces the right lesson, runnable in CI (`npm test`) with no model. See eval/failure-memory/README.md.
+import { test } from "node:test";
+import assert from "node:assert";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  tokenize, parseEntries, scoreEntry, retrieve, formatRetrieval,
+} from "../udflow/skills/universal-dev-flow/scripts/failure-retrieve.mjs";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const EVAL = path.join(root, "eval", "failure-memory");
+
+// --- unit: tokenize ---
+
+test("tokenize lowercases, splits on non-alphanumerics, drops stopwords and length-1 noise", () => {
+  const t = tokenize("Build broke on Windows: dist/ + name.ts");
+  assert.ok(t.has("build") && t.has("windows") && t.has("dist") && t.has("name") && t.has("ts"));
+  assert.ok(!t.has("on"), "stopword dropped");
+  assert.ok(!t.has("+"), "punctuation produces no token");
+});
+
+test("tokenize is null/garbage tolerant (returns an empty set)", () => {
+  assert.strictEqual(tokenize(null).size, 0);
+  assert.strictEqual(tokenize(undefined).size, 0);
+  assert.strictEqual(tokenize("").size, 0);
+});
+
+// --- unit: parseEntries ---
+
+const MEM = `# FM
+
+### 2026-06-18 — jsdom missing in CI
+- **Prevention rule**: declare test-only deps as devDependencies.
+- **Tags**: node / dependencies / ci.
+- **Recurrence**: seen again 2026-06-21.
+
+### 2026-06-12 — hardcoded path separator
+- **Prevention rule**: join paths via the platform API.
+- **Tags**: cross-language / build / path.
+
+### <YYYY-MM-DD> — <short title>
+- **Tags**: x.
+
+### 2026-05-30 — old async rule (superseded by 2026-06-24)
+- **Prevention rule**: use for...of.
+- **Tags**: javascript / async.
+`;
+
+test("parseEntries extracts title, tags, date, recurrence and flags placeholder/retired", () => {
+  const e = parseEntries(MEM);
+  assert.strictEqual(e.length, 4);
+  const jsdom = e[0];
+  assert.match(jsdom.title, /jsdom missing in CI/);
+  assert.strictEqual(jsdom.date, 20260618);
+  assert.strictEqual(jsdom.recurrence, 1, "one 'seen again' counted");
+  assert.ok(jsdom.tagTokens.has("node") && jsdom.tagTokens.has("dependencies"));
+  assert.ok(e.find((x) => x.placeholder), "template placeholder flagged");
+  assert.ok(e.find((x) => x.retired && /async/.test(x.title)), "superseded entry flagged retired");
+});
+
+test("parseEntries on an unstructured/empty file yields no entries (fail-open)", () => {
+  assert.strictEqual(parseEntries("just prose, no headings").length, 0);
+  assert.strictEqual(parseEntries("").length, 0);
+  assert.strictEqual(parseEntries(null).length, 0);
+});
+
+// --- unit: scoreEntry weighting ---
+
+test("scoreEntry weights a tag match above a title match above a body-only match", () => {
+  const [entry] = parseEntries(`### 2026-06-18 — jsdom missing in CI
+- **Prevention rule**: declare deps explicitly so a clean install resolves them.
+- **Tags**: node / dependencies / ci.
+`);
+  assert.ok(scoreEntry(entry, tokenize("node")) > scoreEntry(entry, tokenize("jsdom")),
+    "a tag hit (node) outscores a title-only hit (jsdom)");
+  assert.ok(scoreEntry(entry, tokenize("jsdom")) > scoreEntry(entry, tokenize("resolves")),
+    "a title hit outscores a body-only hit");
+  assert.strictEqual(scoreEntry(entry, tokenize("kubernetes")), 0, "no overlap scores 0");
+});
+
+// --- unit: retrieve ---
+
+test("retrieve ranks the relevant lesson first and returns its full prevention prose", () => {
+  const got = retrieve(MEM, "npm test jsdom node ci devDependencies", { top: 5 });
+  assert.ok(got.length >= 1);
+  assert.match(got[0].entry.title, /jsdom missing in CI/, "best match ranks #1");
+  assert.match(got[0].entry.raw, /declare test-only deps as devDependencies/, "full entry prose returned");
+});
+
+test("retrieve excludes retired and placeholder entries", () => {
+  // A signature that would match the retired async entry must return nothing from it.
+  const got = retrieve(MEM, "javascript async for of foreach await", { top: 5 });
+  assert.ok(!got.some((m) => /async rule/.test(m.entry.title)), "superseded entry must not surface");
+  assert.ok(!got.some((m) => m.entry.placeholder), "placeholder must not surface");
+});
+
+test("retrieve returns [] for an empty query, no match, and an absent/unstructured file (fail-open)", () => {
+  assert.deepStrictEqual(retrieve(MEM, "", { top: 5 }), []);
+  assert.deepStrictEqual(retrieve(MEM, "kubernetes ingress tls", { top: 5 }), []);
+  assert.deepStrictEqual(retrieve("", "anything", { top: 5 }), []);
+  assert.deepStrictEqual(retrieve(null, "anything", { top: 5 }), []);
+});
+
+test("retrieve breaks a score tie by recency then recurrence", () => {
+  // Two entries, identical single-token tag overlap on 'shared'; the newer date must rank first.
+  const mem = `# FM
+
+### 2026-06-20 — newer shared lesson
+- **Tags**: shared.
+
+### 2026-06-01 — older shared lesson
+- **Tags**: shared.
+`;
+  const got = retrieve(mem, "shared", { top: 5 });
+  assert.match(got[0].entry.title, /newer shared lesson/, "newer entry wins the tie");
+});
+
+// --- unit: formatRetrieval ---
+
+test("formatRetrieval labels matches as untrusted reference data and embeds the full entries", () => {
+  const got = retrieve(MEM, "jsdom node ci", { top: 5 });
+  const out = formatRetrieval(got, { file: "ai/FAILURE_MEMORY.md" });
+  assert.match(out, /NOT instructions to follow/i, "untrusted-data label present");
+  assert.match(out, /jsdom missing in CI/, "matched entry embedded");
+});
+
+test("formatRetrieval emits a single no-claim line when nothing matched", () => {
+  const out = formatRetrieval([], { file: "ai/FAILURE_MEMORY.md" });
+  assert.match(out, /no matching failure-memory entries/i);
+  assert.ok(!/###/.test(out), "no entry bodies in a no-match report");
+});
+
+// --- the committed eval (eval/failure-memory) ---
+
+test("eval/failure-memory: every seeded case surfaces the expected lesson (recall + precision)", () => {
+  const seed = fs.readFileSync(path.join(EVAL, "seed.md"), "utf8");
+  const { cases } = JSON.parse(fs.readFileSync(path.join(EVAL, "cases.json"), "utf8"));
+  assert.ok(Array.isArray(cases) && cases.length > 0, "cases.json must define cases");
+  for (const c of cases) {
+    const got = retrieve(seed, c.query, { top: 5 });
+    const titles = got.map((m) => m.entry.title);
+    if (c.expectTop) {
+      assert.ok(got.length >= 1, `[${c.name}] expected a match for: ${c.query}`);
+      assert.ok(titles[0].includes(c.expectTop),
+        `[${c.name}] expected "${c.expectTop}" to rank #1, got "${titles[0]}"`);
+    }
+    for (const bad of (c.mustNotMatch || [])) {
+      assert.ok(!titles.some((t) => t.includes(bad)),
+        `[${c.name}] "${bad}" must not surface, got ${JSON.stringify(titles)}`);
+    }
+  }
+});

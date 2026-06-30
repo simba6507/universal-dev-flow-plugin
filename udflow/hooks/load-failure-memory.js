@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // udflow SessionStart: inject a compact FAILURE_MEMORY *digest* into context.
 // Prefer project ai/FAILURE_MEMORY.md, else global ~/.claude/FAILURE_MEMORY.md.
-// The digest is a condensed index (entry title + tags, newest first, capped) — NOT
-// the whole file, and NOT the prevention-rule prose (that is read on demand during
-// planning). Never crash a session: exit 0 with no output on any problem.
+// The digest is a condensed index (entry title + tags, capped) — NOT the whole file,
+// and NOT the prevention-rule prose (that is read on demand during planning). Entries
+// are ranked by intrinsic importance — recurrence first (a lesson that keeps biting),
+// then recency — so the always-on index leads with what matters, not merely the newest.
+// Never crash a session: exit 0 with no output on any problem.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -122,11 +124,23 @@ function neutralize(text) {
   }).join("\n");
 }
 
-// Parse "### " entries (newest first by convention) into one-line summaries:
-// "- <title>  [tags: ...]". Only the title + tags are injected — the prevention-rule
-// PROSE is deliberately NOT auto-injected (it is read on demand during planning), to
-// keep repo-controlled imperative text out of the always-on context. Returns null when
-// the file is not structured with "### " headings (caller then uses buildFallback).
+// Score an entry for the always-on index: recurrence dominates (a lesson seen again keeps biting and is
+// worth leading with), then recency breaks the tie. The recurrence weight (1e8) sits above any date
+// ordinal (YYYYMMDD < 1e8), so a single recurrence outranks any age gap while two equally-recurring
+// lessons still order newest-first. Undated, never-recurring entries score 0 and fall back to file order.
+function entryScore(title, bodyLines) {
+  const m = String(title).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const dateOrdinal = m ? Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]) : 0;
+  let recurrence = 0;
+  for (const ln of bodyLines) recurrence += (ln.match(/seen again/gi) || []).length;
+  return recurrence * 1e8 + dateOrdinal;
+}
+
+// Parse "### " entries into one-line summaries: "- <title>  [tags: ...]", ranked by entryScore
+// (recurrence, then recency) rather than raw file order. Only the title + tags are injected — the
+// prevention-rule PROSE is deliberately NOT auto-injected (it is read on demand during planning), to
+// keep repo-controlled imperative text out of the always-on context. Returns null when the file is not
+// structured with "### " headings (caller then uses buildFallback).
 function buildDigest(content) {
   const lines = content.split(/\r?\n/);
   const starts = [];
@@ -155,28 +169,35 @@ function buildDigest(content) {
   }
   if (realTotal === 0) return ""; // structured but only placeholder(s) -> inject nothing
 
-  const items = [];
-  for (let s = 0; s < starts.length && items.length < MAX_ENTRIES; s++) {
+  // Collect ALL real entries first (with a rank score), then sort and cap — so the kept MAX_ENTRIES are
+  // the highest-ranked, not merely the first in the file. `idx` preserves the original (newest-first)
+  // order as a stable tie-break, so equal-score entries behave exactly as before.
+  const scored = [];
+  for (let s = 0; s < starts.length; s++) {
     const startLine = starts[s];
     const endLine = (s + 1 < starts.length) ? starts[s + 1] : lines.length;
     const title = lines[startLine].replace(/^###\s+/, "").trim();
     if (isPlaceholder(title)) continue; // skip the "### <YYYY-MM-DD> — <title>" template heading
     if (isRetired(title)) continue;     // skip entries marked (expired)/(superseded …) — retired, don't inject
+    const bodyLines = lines.slice(startLine + 1, endLine);
     // Tags only — the prevention-rule prose is intentionally NOT pulled into the digest (read on
     // demand during planning), so repo-controlled imperative text never enters the auto-injected
     // context. The full rule still lives in the file for the model to retrieve when relevant.
     let tags = "";
-    for (let j = startLine + 1; j < endLine; j++) {
-      let m;
-      if (!tags && (m = lines[j].match(/^\s*[-*]?\s*\**\s*tags\**\s*:?\s*(.+)$/i))) tags = m[1].replace(/^\**\s*/, "").replace(/[.\s]+$/, "").trim();
+    for (const ln of bodyLines) {
+      const m = ln.match(/^\s*[-*]?\s*\**\s*tags\**\s*:?\s*(.+)$/i);
+      if (m) { tags = m[1].replace(/^\**\s*/, "").replace(/[.\s]+$/, "").trim(); break; }
     }
     let line = "- " + title;
     if (tags) line += "  [tags: " + tags + "]";
-    items.push(line);
+    scored.push({ line, score: entryScore(title, bodyLines), idx: s });
   }
+  // Rank by importance (recurrence, then recency), stable on the original order for ties, then cap.
+  scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
+  const items = scored.slice(0, MAX_ENTRIES).map((e) => e.line);
 
-  // entry-aware char cap: always keep the newest entry (bounded if it alone is
-  // huge), then add as many older ones as fit. Never an empty digest + a note.
+  // entry-aware char cap: always keep the top-ranked entry (bounded if it alone is
+  // huge), then add as many more as fit. Never an empty digest + a note.
   const kept = [];
   let used = 0;
   for (const it of items) {

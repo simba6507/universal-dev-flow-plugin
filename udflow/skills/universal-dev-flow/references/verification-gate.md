@@ -88,12 +88,20 @@ Do not perform broad encoding conversion unless the root cause and interoperabil
 
 ## Failure Memory
 
-Read before non-trivial implementation. The SessionStart hook injects only a condensed **digest** (entry titles + tags, newest first; the prevention-rule text is read on demand, not injected) as an index — do not treat it as the full record:
+Read before non-trivial implementation. The SessionStart hook injects only a condensed **digest** (entry titles + tags, **ranked by importance — recurrence first, then recency** — so the always-on index leads with the lessons that keep biting, not merely the newest; the prevention-rule text is read on demand, not injected) as an index — do not treat it as the full record:
 
 1. `ai/FAILURE_MEMORY.md` when it exists.
 2. `~/.claude/FAILURE_MEMORY.md` otherwise, including consolidated groups.
 
 During planning, perform **targeted retrieval**: search the failure-memory file for entries relevant to this task's affected files, area, language, and error type (use the entry `Tags` to filter), then read those full entries. Do not rely on the startup digest alone.
+
+To make this retrieval **deterministic instead of a best-effort grep**, run the dependency-free helper `scripts/failure-retrieve.mjs` with the task's signature — affected paths, language, area, and error-type tokens — and read the full entries it ranks back:
+
+```
+node skills/universal-dev-flow/scripts/failure-retrieve.mjs --query "src/auth/login.ts node jsdom ci-test" [--file <path>] [--top 5]
+```
+
+It parses the same `### ` entries, scores each by tag/title/body overlap with the signature (a tag hit outweighs a title hit outweighs a body hit), drops retired (`expired`/`superseded`) and placeholder entries, and returns the top matches' verbatim markdown. Fail-open: an absent/unstructured file or no sufficiently-relevant match yields a no-claim line and exit 0 — it is a ranking aid, **not** a gate, and never replaces reading the file when judgment calls for it. The retrieval recall/precision is regression-guarded by the committed `eval/failure-memory/` oracle (`test/failure-retrieve.test.mjs`).
 
 **Single writer:** the failure-memory file is shared mutable state and reviewers run in parallel, so only one actor writes it — the main thread / `gatekeeper` after the verdict. Reviewers and the implementer only *propose* entries; they do not write the file. This avoids lost-update / interleaved-write corruption (the "reread global first" step below is a lockless read-modify-write and is only safe with a single writer).
 
