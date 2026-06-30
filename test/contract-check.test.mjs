@@ -108,4 +108,5 @@ test("formatReport: no allowedPaths declared => explicit no-allow-list-claim lin
 test("acCoverage names an uncovered, id-less criterion '(unnamed)'", () => {
   const c = { acceptanceCriteria: [{ behaviorChanging: true, verification: "" }] };
   assert.deepStrictEqual(acCoverage(c).uncovered, ["(unnamed)"]);
+  assert.strictEqual(acCoverage(c).total, 1);
 });
