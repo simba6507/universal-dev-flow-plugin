@@ -288,6 +288,44 @@ if (fs.existsSync(path.join(root, hooksRel))) {
   }
 }
 
+// 5h. Release asset contract: release archives/checksums must be tag-bound and repairable.
+// This is a lightweight static guard for the release workflow because the actual GitHub Release
+// asset behavior can only be exercised during a real release.
+const releaseWorkflowRel = ".github/workflows/validate.yml";
+const releaseWorkflowPath = path.join(root, releaseWorkflowRel);
+if (!fs.existsSync(releaseWorkflowPath)) fail(`${releaseWorkflowRel}: missing release workflow`);
+const releaseScriptRel = ".github/scripts/publish-release.mjs";
+const releaseScriptPath = path.join(root, releaseScriptRel);
+if (!fs.existsSync(releaseScriptPath)) fail(`${releaseScriptRel}: missing release publisher script`);
+if (fs.existsSync(releaseWorkflowPath) && fs.existsSync(releaseScriptPath)) {
+  const workflow = fs.readFileSync(releaseWorkflowPath, "utf8");
+  if (!new RegExp(`^\\s*run:\\s+node ${releaseScriptRel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m").test(workflow)) {
+    fail(`${releaseWorkflowRel}: release job must call ${releaseScriptRel}`);
+  }
+  if (!new RegExp(`^\\s*run:\\s+node --check ${releaseScriptRel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m").test(workflow)) {
+    fail(`${releaseWorkflowRel}: validate job must syntax-check ${releaseScriptRel}`);
+  }
+}
+
+// 5i. Example provenance contract: real examples must stay tied to EVIDENCE.md and the illustrative
+// NOT READY sample must never look like Type-B evidence.
+const exampleProvenance = [
+  ["examples/ready-run.md", ["Source: extracted and abridged from `EVIDENCE.md` Live run 4.", "Evidence tier: publicly verifiable maintainer run", "URL note:"]],
+  ["examples/fix-required-run.md", ["Source: extracted and abridged from `EVIDENCE.md` Live run 5.", "Evidence tier: publicly verifiable maintainer run", "URL note:"]],
+  ["examples/not-ready-run.md", ["Source: illustrative placeholder", "Evidence tier: illustrative only, not Type-B evidence", "not counted toward graduation"]],
+  ["examples/review-packet.md", ["Source: reconstructed from `EVIDENCE.md` Live run 5.", "not the verbatim packet", "contract-field example"]],
+  ["examples/final-report-compact.md", ["Source: shaped from `EVIDENCE.md` Live run 4.", "Evidence tier: publicly verifiable maintainer run", "not a verbatim transcript", "URL note:"]],
+  ["examples/final-report-full.md", ["Source: shaped from `EVIDENCE.md` Live run 5.", "illustrative full-report shape", "not reconstructed"]],
+];
+for (const [rel, snippets] of exampleProvenance) {
+  const full = path.join(root, rel);
+  if (!fs.existsSync(full)) fail(`${rel}: missing example file`);
+  const text = fs.readFileSync(full, "utf8");
+  for (const snippet of snippets) {
+    if (!text.includes(snippet)) fail(`${rel}: missing required provenance marker "${snippet}"`);
+  }
+}
+
 // 6. distribution hygiene: runtime/process artifacts must never ship in the
 // plugin subdir, and scratch/temp files must not be committed anywhere.
 const forbidden = [
@@ -313,18 +351,37 @@ function scanScratch(dir) {
 }
 scanScratch(".");
 
-// 7. text integrity: no U+FFFD replacement characters in tracked text (mojibake / broken encoding).
+// 7. text integrity: no replacement characters or known mojibake markers in tracked text.
 const TEXT_EXT = /\.(md|json|mjs|js|ya?ml)$/i;
+const MOJIBAKE_MARKERS = [
+  0xFFFD, // replacement character
+  0x7AB6,
+  0x7ACA,
+  0x5689,
+  0x90E2,
+  0x90B5,
+  0x8B41,
+  0xFF82, // halfwidth katakana often produced by UTF-8/CP932 mojibake
+  0xFF77,
+  0xFF9E,
+  0xFF80,
+];
 function scanTextIntegrity(dir) {
   const abs = path.join(root, dir);
   if (!fs.existsSync(abs)) return;
-  const FFFD = String.fromCharCode(0xFFFD); // the U+FFFD replacement char, built without embedding it here
   for (const e of fs.readdirSync(abs, { withFileTypes: true })) {
     if (e.name === ".git" || e.name === "node_modules") continue;
     const rel = path.join(dir, e.name);
     if (e.isDirectory()) scanTextIntegrity(rel);
-    else if (TEXT_EXT.test(e.name) && fs.readFileSync(path.join(root, rel), "utf8").includes(FFFD)) {
-      fail(`text integrity: ${rel} contains a U+FFFD replacement character (mojibake / broken encoding)`);
+    else if (TEXT_EXT.test(e.name)) {
+      const text = fs.readFileSync(path.join(root, rel), "utf8");
+      for (const codePoint of MOJIBAKE_MARKERS) {
+        const marker = String.fromCodePoint(codePoint);
+        if (text.includes(marker)) {
+          fail(`text integrity: ${rel} contains suspicious mojibake marker U+${codePoint.toString(16).toUpperCase()}`);
+          break;
+        }
+      }
     }
   }
 }
@@ -343,6 +400,25 @@ if (fs.existsSync(enReadme) && !fs.existsSync(zhReadme)) {
   const sectionCount = (s) => (s.replace(/```[\s\S]*?```/g, "").match(/^##\s+/gm) || []).length;
   if (sectionCount(en) !== sectionCount(zh)) {
     fail(`README parity: README.md has ${sectionCount(en)} top-level (##) sections but README.zh-TW.md has ${sectionCount(zh)}`);
+  }
+  const requiredReadmeLinks = [
+    "docs/task-writing-guide.md",
+    "docs/how-to-read-verdicts.md",
+    "docs/compatibility.md",
+    "examples/ready-run.md",
+    "examples/fix-required-run.md",
+    "examples/not-ready-run.md",
+    "examples/review-packet.md",
+    "examples/final-report-compact.md",
+    "examples/final-report-full.md",
+    "EVIDENCE.md",
+    "SECURITY.md",
+    "RELEASING.md",
+    "template=verified-run.yml",
+  ];
+  for (const link of requiredReadmeLinks) {
+    if (!en.includes(link)) fail(`README parity: README.md missing required entry link "${link}"`);
+    if (!zh.includes(link)) fail(`README parity: README.zh-TW.md missing required entry link "${link}"`);
   }
   const hjPath = path.join(root, `${PLUGIN}/hooks/hooks.json`);
   if (fs.existsSync(hjPath)) {

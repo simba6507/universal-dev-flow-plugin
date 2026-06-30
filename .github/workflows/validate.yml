@@ -35,6 +35,9 @@ jobs:
       - name: Validate plugin structure
         run: node .github/scripts/validate-structure.mjs
 
+      - name: Syntax-check release publisher
+        run: node --check .github/scripts/publish-release.mjs
+
       # The session hooks run on every session and fail open, so a syntax error
       # would otherwise be invisible. Syntax-check and behaviorally test them.
       - name: Syntax-check hooks
@@ -67,10 +70,10 @@ jobs:
           claude plugin validate ./udflow || echo "plugin validate could not run headless; the checks above are the gate."
 
   # Auto-publish the release once Validate passes: the plugin manifest version is the
-  # source of truth — if no matching tag exists yet, cut the annotated tag + GitHub
-  # release (notes from the CHANGELOG). This makes the version / manifests / CHANGELOG /
-  # git tag / release impossible to drift; the maintainer never tags by hand. Idempotent
-  # (skips if the release is already published — non-draft); push-to-master only.
+  # source of truth. If no matching tag/release exists, cut the annotated tag + GitHub
+  # release (notes from the CHANGELOG). If the release is already published, verify its
+  # deterministic archive/checksum assets and fail closed on drift unless an explicit repair
+  # variable is enabled. The maintainer never tags by hand; push-to-master only.
   release:
     needs: validate
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
@@ -86,6 +89,9 @@ jobs:
       # Tag signing is OPT-IN + gated: with the UDFLOW_SIGN_PRIVATE_KEY secret set, release tags are GPG-signed
       # (GitHub "Verified"); without it the flow is unchanged (unsigned annotated tag). See SECURITY.md.
       HAS_GPG: ${{ secrets.UDFLOW_SIGN_PRIVATE_KEY != '' }}
+      # Default is verify-only for already-published releases. Set this repository variable to true only
+      # for an intentional repair of missing/mismatched release archive assets.
+      UDFLOW_REPAIR_PUBLISHED_RELEASE_ASSETS: ${{ vars.UDFLOW_REPAIR_PUBLISHED_RELEASE_ASSETS == 'true' && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -108,59 +114,7 @@ jobs:
           git config user.name "${uid% <*}"
           git config user.email "$(printf '%s' "$uid" | sed 's/.*<//; s/>.*//')"
           echo "Imported GPG signing key $keyid"
-      - name: Tag + release when the manifest version is new
+      - name: Publish or verify release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          ver=$(node -p "require('./udflow/.claude-plugin/plugin.json').version")
-          tag="v$ver"
-          # Capture the release's draft state once: "false"=published, "true"=draft, ""=no release.
-          # ('|| true' keeps set -e happy when the release does not exist.)
-          state="$(gh release view "$tag" --json isDraft -q '.isDraft' 2>/dev/null || true)"
-          echo "Release state for $tag: isDraft=${state:-<none>}"
-          if [ "$state" = "false" ]; then
-            echo "Release $tag already published — nothing to publish."
-            exit 0
-          fi
-          echo "Publishing $tag from manifest version $ver."
-          # Release notes = this version's CHANGELOG section (validate-structure already
-          # guarantees the entry exists); fall back to a pointer if extraction is empty.
-          # POSIX literal-bracket class [[] / []] (not \[ \]) so this matches on both mawk and gawk.
-          awk -v v="$ver" '
-            $0 ~ "^## [[]" v "[]]" { grab=1; next }
-            grab && /^## [[]/ { exit }
-            grab { print }
-          ' CHANGELOG.md > /tmp/relnotes.md
-          [ -s /tmp/relnotes.md ] || echo "See CHANGELOG.md for $tag." > /tmp/relnotes.md
-          # Only fall back to the bot identity when NOT signing — the import step set the maintainer
-          # identity, which must match the GPG key's verified email for GitHub to show "Verified".
-          if [ "${HAS_GPG:-}" != "true" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          fi
-          if [ "$state" = "true" ]; then
-            # A stray draft release exists for this tag — promote it instead of failing on create.
-            echo "Existing draft found — promoting to published."
-            gh release edit "$tag" --draft=false --notes-file /tmp/relnotes.md
-            echo "Published $tag (promoted from draft)."
-            exit 0
-          fi
-          # No release exists — create it. Idempotent annotated tag first; --verify-tag refuses to
-          # mint a lightweight tag if the annotated one is somehow missing.
-          if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            # Sign when configured; fall back to an unsigned annotated tag if signing isn't set up or fails
-            # (e.g. a passphrase-protected key), so a release can never be blocked on signing.
-            if [ "${HAS_GPG:-}" = "true" ] && git tag -s "$tag" -m "udflow $tag"; then
-              echo "Created SIGNED tag $tag."
-            else
-              if [ "${HAS_GPG:-}" = "true" ]; then
-                echo "WARNING: tag signing unavailable (key/passphrase issue) — using an unsigned annotated tag."
-              fi
-              git tag -a "$tag" -m "udflow $tag"
-            fi
-            git push origin "$tag"
-          fi
-          gh release create "$tag" --title "$tag" --notes-file /tmp/relnotes.md --verify-tag
-          echo "Published $tag."
+        run: node .github/scripts/publish-release.mjs

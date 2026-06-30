@@ -24,34 +24,59 @@ yourself — they are short, dependency-free, readable scripts in `udflow/hooks/
 - **Non-destructive.** They never change system/security settings, alter file permissions, or delete
   anything. `destructive-guard` only returns `ask` (a prompt) on a narrow deny-list of unrecoverable
   commands — it never denies and never deletes.
-- **Read scope.** `load-failure-memory` reads your `FAILURE_MEMORY.md`; nothing else is read by the
-  hooks. The reviewer subagents are read-only by tool grant (`Read`/`Grep`/`Glob`/`Bash`).
+- **Read scope.** Hooks read only bounded local files needed for their guardrails:
+  `load-failure-memory` reads project `ai/FAILURE_MEMORY.md` or global
+  `~/.claude/FAILURE_MEMORY.md`; `plan-gate`, `destructive-guard`, and `compact-fidelity` read
+  project `.claude/settings*.json` for opt-outs; `orchestration-check` reads the transcript path
+  supplied by the hook event with a size cap. Reviewer subagents are separate from hooks: they have
+  no editor-specific tool grants, but their grant still includes `Bash` (`Read`/`Grep`/`Glob`/`Bash`),
+  so review-only behavior is a workflow/prompt discipline rather than a hard capability boundary.
 
 Per-project opt-outs exist for each guarding hook (`planGate` / `destructiveGuard` / `preserveOnCompact`
 in `.claude/settings.json`), and the whole plugin ships **disabled** — you opt in.
 
-## Supply chain & integrity (current gaps, stated honestly)
+## Recommended safe install
 
-udflow is distributed as **source**: `marketplace add` clones the repo. There is **no release signing,
-checksum, or provenance today** — see *Roadmap*. Until then, reduce trust risk by:
+1. Install from a tagged release or pinned commit instead of a moving branch.
+2. Review the shipped plugin's `hooks/` directory before enabling the plugin (repo path:
+   `udflow/hooks/`); the auto-executing surface is intentionally small.
+3. Run [`/udflow:doctor`](udflow/skills/doctor/SKILL.md) after install to confirm hooks load and fail open as documented.
+4. When a signed tag is available, verify it locally with `git verify-tag vX.Y.Z`.
+5. When release assets include a plugin archive and `.sha256`, verify the checksum before unpacking or comparing the shipped tree.
+
+The marketplace quick start is a convenience path and may follow the marketplace/repo state. Release
+checksums integrity-check the published archive; authenticity still depends on a signed tag or pinned
+SHA. They do not authenticate that default clone path. For stronger pinning, use a tagged/SHA checkout
+where your runtime supports it, or compare the verified archive against the installed `udflow/` tree
+before enabling.
+
+## Supply chain & integrity (current posture)
+
+udflow is distributed as **source**: `marketplace add` clones the repo. Releases support opt-in signed
+tags and publish a checksum-bearing archive of the shipped plugin tree when the release workflow runs.
+Build provenance / SLSA remains future work. Reduce trust risk by:
 
 - **Pin what you install.** Prefer a **tagged release** or a specific commit SHA over a moving branch.
   The official community-marketplace listing (when live) pins a reviewed commit SHA — the strongest
   channel.
-- **Audit the tree.** Everything that executes is readable text + zero-dependency Node scripts; the
-  whole plugin is small enough to read before enabling. There is no compiled artifact and no
-  third-party runtime dependency to trust.
+- **Audit the tree.** Everything that executes is readable text + zero-dependency Node scripts in
+  the shipped plugin's `hooks/` directory (repo path: `udflow/hooks/`); the whole plugin is small
+  enough to read before enabling. There is no compiled artifact and no third-party runtime
+  dependency to trust.
+- **Verify release material.** Use `git verify-tag vX.Y.Z` for signed tags when available, and compare
+  the release archive against its `.sha256` file when assets are present.
 - **Run [`/udflow:doctor`](udflow/skills/doctor/SKILL.md)** after install to confirm the hooks behave
   as documented (fires + fails open) in your environment.
 
 ## Untrusted-input surface (one, mitigated)
 
-`load-failure-memory` reads a **committed** `FAILURE_MEMORY.md` and injects a digest of its entry
-titles into every session. A hostile repository could therefore place crafted content in that file —
-a prompt-injection vector. Mitigations (defense-in-depth, in the hook source): the digest is
+`load-failure-memory` reads project `ai/FAILURE_MEMORY.md` and, when present, user-controlled
+global `~/.claude/FAILURE_MEMORY.md`, then injects a digest of entry titles into every session. A
+hostile repository could therefore place crafted content in the project file — a prompt-injection
+vector. Mitigations (defense-in-depth, in the hook source): the digest is
 **nonce-fenced**, **role-marker-neutralized**, and explicitly **labeled untrusted**, and it carries
-titles/tags only (not free body text). To remove the surface entirely, delete the file — with no
-`FAILURE_MEMORY.md` present the hook is a no-op.
+titles/tags only (not free body text). To remove the surface entirely, delete the applicable
+failure-memory file — with no project or global failure-memory file present the hook is a no-op.
 
 ## Integrity roadmap
 
@@ -62,4 +87,6 @@ titles/tags only (not free body text). To remove the surface entirely, delete th
   the secret + register the matching **public** key on the maintainer's GitHub account (so the tagger
   email is a *verified* one). Verify any release locally with `git verify-tag vX.Y.Z`. Setup steps:
   `RELEASING.md`.
-- **Build provenance** — consider SLSA provenance / a published checksum for releases (future).
+- **Release checksums — wired.** The release job publishes `udflow-vX.Y.Z-plugin.tar.gz` plus
+  `udflow-vX.Y.Z-plugin.tar.gz.sha256` for the shipped `udflow/` tree.
+- **Build provenance** — consider SLSA provenance for releases (future).

@@ -10,7 +10,7 @@ for the empirical track record see [`EVIDENCE.md`](EVIDENCE.md).
 udflow is **orchestration owned by a skill, personas owned by agents, guards owned by
 hooks.** The `universal-dev-flow` skill (`udflow/skills/universal-dev-flow/SKILL.md`) owns
 the *flow*; it loads lazy reference contracts only when a step needs them. The work itself
-is done by read-only **reviewer subagents** plus an **implementer** and a **gatekeeper**.
+is checked by policy-constrained **reviewer subagents** plus an **implementer** and a **gatekeeper**.
 Five **Node hooks** run in every session as fail-open guards, independent of any udflow task.
 The only machine-coupled surface between the prose-driven workflow and the hooks is a small
 set of **verbatim literals** (see *Stable contract* below).
@@ -24,7 +24,7 @@ task
   → YOU APPROVE (plan + acceptance criteria)
   → implementer (smallest safe change; never self-certifies)
   → Verify (build/test/lint/browser; command EXIT STATUS is authority)
-  → Review Packet ──► selected reviewers (parallel, each in an ISOLATED context, read-only)
+  → Review Packet ──► selected reviewers (parallel, each in an ISOLATED context, review-only by policy)
   → gatekeeper (aggregates, re-rates by impact, checks each acceptance criterion)
   → READY / FIX REQUIRED / NOT READY  ──► repair loop (hard cap) ──► back to Verify
   → Final report + sentinels (udflow:verify= / udflow:delivery=)  ──► orchestration-check.js (Stop) reads them
@@ -39,7 +39,9 @@ Code subagent isolation), not just by prose (`references/runtime-policy.md`).
 - **10 agents** (`udflow/agents/*.agent.md`, wired in `plugin.json`): `planner-creator`,
   `implementer`, the 7 reviewers (`spec` / `test` / `code` / `security` / `architecture` /
   `operability` / `ui-ux`), and `gatekeeper`. `security-reviewer` + `gatekeeper` pin `opus`;
-  the rest inherit. Reviewers are read-only by tool grant (`Read`/`Grep`/`Glob`/`Bash`).
+  the rest inherit. Reviewers have no editor-specific tool grants, but their grant still includes
+  `Bash` (`Read`/`Grep`/`Glob`/`Bash`), so review-only behavior is enforced by reviewer policy and
+  context isolation rather than by a hard read-only capability boundary.
 - **5 hooks** (`udflow/hooks/*.js`, wired in `hooks.json`) — all fail-open, local-only, no
   network, Node built-ins only: `plan-gate` (PreToolUse), `destructive-guard` (PreToolUse),
   `load-failure-memory` (SessionStart), `compact-fidelity` (SessionStart·compact),
@@ -84,10 +86,12 @@ are the higher-risk, less-defended edges** — the rest of this section names th
   `/run` — are all **Detect → Use → Else-Disclose** (`references/external-capabilities.md`): used if
   present, the gap disclosed if absent, never a hard dependency. udflow must run standalone.
 - **Distribution / supply chain** — hooks **auto-execute in every consumer session**, distributed
-  by `git clone` via the marketplace, with **no signing / checksum / provenance today**. A
-  compromised repo or marketplace would run hook code in every session. [`SECURITY.md`](SECURITY.md)
-  states the trust model + how to reduce risk (pin a tag/SHA; audit the zero-dependency tree; run
-  `/udflow:doctor`); signed releases remain an owner-side roadmap item there.
+  by `git clone` via the marketplace. Release tags can be signed when the owner-side GPG secret is
+  configured, and the release job publishes a SHA-256 checksum for the archived shipped `udflow/`
+  tree; SLSA/provenance remains future work. A compromised repo or marketplace would run hook code
+  in every session. [`SECURITY.md`](SECURITY.md) states the trust model + how to reduce risk (pin a
+  tag/SHA; audit the zero-dependency tree; verify tags/checksums when present; run
+  `/udflow:doctor`).
 
 ## Honest limits
 

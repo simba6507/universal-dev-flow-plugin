@@ -3,6 +3,17 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.27.11]
+
+### Added
+- **Onboarding docs and real examples:** README / README.zh-TW now lead with a 30-second positioning section, use/skip guidance, anti-goals, evidence status, and links to new task-writing, verdict-reading, compatibility, and examples docs. The READY and FIX REQUIRED examples are extracted from real `EVIDENCE.md` runs; the NOT READY example is explicitly illustrative and not counted as evidence.
+- **Release archive checksums:** the release job now uploads a `udflow-vX.Y.Z-plugin.tar.gz` archive of the shipped `udflow/` subtree plus `udflow-vX.Y.Z-plugin.tar.gz.sha256`.
+
+### Notes
+- Repo-root docs and release infrastructure only. No hook behavior, agent roster, runtime contract, verdict literal, severity literal, sentinel literal, or shipped `udflow/` workflow behavior changed.
+- `.github/ISSUE_TEMPLATE/verified-run.yml` intentionally unchanged.
+- Version bumped 0.27.10 -> 0.27.11 across `plugin.json`, `package.json`, and `marketplace.json` (metadata + plugin entry) so the release job creates a fresh checksum-bearing release instead of verifying legacy `v0.27.10` assets.
+
 ## [0.27.10]
 
 Make the paste-ready evidence block **reliable** on a real run (owner request: "real run 一律印" — a real run should always print it). Two layers: a firmer contract + a deterministic Stop-hook backstop.

@@ -6,10 +6,18 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import cp from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import zlib from "node:zlib";
+import {
+  createDeterministicPluginArchive,
+  defaultBytesRunner,
+  defaultRunner,
+  runRelease,
+} from "../.github/scripts/publish-release.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const HOOKS = path.join(root, "udflow", "hooks");
@@ -968,6 +976,16 @@ test("validate-structure: text-integrity check FAILS on a planted U+FFFD", () =>
   } finally { fs.rmSync(tree, { recursive: true, force: true }); }
 });
 
+test("validate-structure: text-integrity check FAILS on known mojibake markers", () => {
+  const tree = copyRepoTree();
+  try {
+    fs.appendFileSync(path.join(tree, "README.md"), "\nmojibake " + String.fromCodePoint(0x7AB6) + " marker\n", "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "a known mojibake marker must fail the build");
+    assert.match(out, /suspicious mojibake marker/, "the failure must name the mojibake marker guard");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
 test("validate-structure: README parity FAILS on a top-level section-count mismatch", () => {
   const tree = copyRepoTree();
   try {
@@ -986,6 +1004,17 @@ test("validate-structure: README parity FAILS when the zh README omits a wired h
     const { code, out } = runValidator(tree);
     assert.notStrictEqual(code, 0, "zh omitting a wired hook name must fail the build");
     assert.match(out, /plan-gate/, "the failure must name the missing hook");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: README parity FAILS when either README drops a required entry link", () => {
+  const tree = copyRepoTree();
+  try {
+    const zhPath = path.join(tree, "README.zh-TW.md");
+    fs.writeFileSync(zhPath, fs.readFileSync(zhPath, "utf8").replace("template=verified-run.yml", "template=removed.yml"), "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "README entry links must stay present in both languages");
+    assert.match(out, /missing required entry link/, "the failure must name the missing README link");
   } finally { fs.rmSync(tree, { recursive: true, force: true }); }
 });
 
@@ -1055,6 +1084,558 @@ test("validate-structure: reverting the --report full cost table to a single Tok
     assert.notStrictEqual(code, 0, "dropping the billable-component columns must fail the build");
     assert.match(out, /billable-component column/, "the failure must name the 5e cost-column guard");
   } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+function sha256File(filePath) {
+  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function parseTar(buffer) {
+  const entries = new Map();
+  for (let offset = 0; offset < buffer.length;) {
+    const header = buffer.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const rawName = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
+    const rawPrefix = header.subarray(345, 500).toString("utf8").replace(/\0.*$/, "");
+    const name = rawPrefix ? `${rawPrefix}/${rawName}` : rawName;
+    const mode = Number.parseInt(header.subarray(100, 108).toString("utf8").replace(/\0.*$/, "").trim(), 8);
+    const size = Number.parseInt(header.subarray(124, 136).toString("utf8").replace(/\0.*$/, "").trim(), 8) || 0;
+    const type = header.subarray(156, 157).toString("utf8") || "0";
+    const bodyStart = offset + 512;
+    const body = buffer.subarray(bodyStart, bodyStart + size);
+    entries.set(name, { mode, size, type, body: Buffer.from(body) });
+    offset = bodyStart + Math.ceil(size / 512) * 512;
+  }
+  return entries;
+}
+
+test("release publisher: deterministic archive bytes are stable for the same tag tree", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-archive-"));
+  try {
+    const a = path.join(dir, "a.tar.gz");
+    const b = path.join(dir, "b.tar.gz");
+    createDeterministicPluginArchive({ tag: "HEAD", cwd: root, assetPath: a });
+    createDeterministicPluginArchive({ tag: "HEAD", cwd: root, assetPath: b });
+    assert.strictEqual(sha256File(a), sha256File(b), "same tag tree must produce identical gzip bytes");
+    assert.deepStrictEqual(zlib.gunzipSync(fs.readFileSync(a)), zlib.gunzipSync(fs.readFileSync(b)),
+      "same tag tree must produce identical decompressed tar bytes");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("release publisher: deterministic archive contains expected paths, modes, and bytes", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-archive-"));
+  try {
+    const archive = path.join(dir, "semantic.tar.gz");
+    createDeterministicPluginArchive({ tag: "HEAD", cwd: root, assetPath: archive });
+    const entries = parseTar(zlib.gunzipSync(fs.readFileSync(archive)));
+    assert.strictEqual(entries.get("udflow-HEAD/").type, "5", "archive must include the root directory");
+    assert.strictEqual(entries.get("udflow-HEAD/hooks/").mode, 0o755, "hook directory mode must be stable");
+    const hook = entries.get("udflow-HEAD/hooks/plan-gate.js");
+    assert.ok(hook, "archive must include hook files under the shipped plugin root");
+    assert.strictEqual(hook.type, "0");
+    assert.strictEqual(hook.mode, 0o644);
+    const expected = cp.execFileSync("git", ["cat-file", "blob", "HEAD:udflow/hooks/plan-gate.js"], { cwd: root });
+    assert.deepStrictEqual(hook.body, expected, "archive file bytes must come from the tag-bound udflow tree");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("release publisher: archive reads the tag tree even when the working tree is dirty", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-git-"));
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-archive-"));
+  try {
+    fs.mkdirSync(path.join(repo, "udflow", ".claude-plugin"), { recursive: true });
+    fs.writeFileSync(path.join(repo, "udflow", ".claude-plugin", "plugin.json"), '{"version":"tagged"}\n', "utf8");
+    cp.execFileSync("git", ["init"], { cwd: repo, stdio: "ignore" });
+    cp.execFileSync("git", ["config", "user.name", "Test"], { cwd: repo });
+    cp.execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd: repo });
+    cp.execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repo });
+    cp.execFileSync("git", ["config", "tag.gpgSign", "false"], { cwd: repo });
+    cp.execFileSync("git", ["add", "udflow/.claude-plugin/plugin.json"], { cwd: repo });
+    cp.execFileSync("git", ["commit", "-m", "tagged"], { cwd: repo, stdio: "ignore" });
+    cp.execFileSync("git", ["tag", "-a", "v1.2.3", "-m", "v1.2.3"], { cwd: repo });
+    fs.writeFileSync(path.join(repo, "udflow", ".claude-plugin", "plugin.json"), '{"version":"dirty"}\n', "utf8");
+    const archive = path.join(out, "dirty.tar.gz");
+    createDeterministicPluginArchive({ tag: "v1.2.3", cwd: repo, assetPath: archive });
+    const entries = parseTar(zlib.gunzipSync(fs.readFileSync(archive)));
+    assert.strictEqual(entries.get("udflow-v1.2.3/.claude-plugin/plugin.json").body.toString("utf8"), '{"version":"tagged"}\n',
+      "archive must read the tagged tree, not the dirty working tree");
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+    fs.rmSync(out, { recursive: true, force: true });
+  }
+});
+
+function makeReleaseRoot() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-root-"));
+  fs.mkdirSync(path.join(dir, "udflow", ".claude-plugin"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "udflow", ".claude-plugin", "plugin.json"), JSON.stringify({ version: "1.2.3" }), "utf8");
+  fs.writeFileSync(path.join(dir, "CHANGELOG.md"), "## [1.2.3]\n\nRelease notes.\n\n## [1.2.2]\n\nOld.\n", "utf8");
+  return dir;
+}
+
+function makeReleaseRunner({
+  state,
+  tagExists = true,
+  tagCommit = "head",
+  fatalReleaseView = false,
+  remoteAssetContent = "deterministic test asset",
+  remoteChecksumName,
+  remoteChecksumText,
+  downloadFailures = [],
+  downloadFailureStderr = {},
+  signedTagSucceeds = false,
+  signedTagFails = false,
+  requireIdentityForAnnotatedTag = false,
+} = {}) {
+  const calls = [];
+  let currentTagExists = tagExists;
+  let gitNameSet = false;
+  let gitEmailSet = false;
+  const runner = (cmd, args) => {
+    calls.push([cmd, ...args]);
+    if (cmd === "gh" && args[0] === "release" && args[1] === "view") {
+      if (fatalReleaseView) {
+        const err = new Error("rate limited");
+        err.stderr = "HTTP 403: rate limit";
+        throw err;
+      }
+      if (state == null) {
+        const err = new Error("not found");
+        err.stderr = "HTTP 404: Not Found";
+        throw err;
+      }
+      return state;
+    }
+    if (cmd === "gh" && args[0] === "release" && args[1] === "download") {
+      const pattern = args[args.indexOf("--pattern") + 1];
+      if (downloadFailures.includes(pattern)) {
+        const err = new Error(`download failed: ${pattern}`);
+        err.stderr = downloadFailureStderr[pattern] || `HTTP 404: Not Found (${pattern})`;
+        throw err;
+      }
+      const dir = args[args.indexOf("--dir") + 1];
+      fs.mkdirSync(dir, { recursive: true });
+      if (pattern.endsWith(".sha256")) {
+        const assetName = remoteChecksumName || pattern.replace(/\.sha256$/, "");
+        const hash = crypto.createHash("sha256").update(remoteAssetContent).digest("hex");
+        const content = typeof remoteChecksumText === "function"
+          ? remoteChecksumText(hash, assetName, pattern)
+          : remoteChecksumText || `${hash}  ${assetName}\n`;
+        fs.writeFileSync(path.join(dir, pattern), content, "utf8");
+      } else {
+        fs.writeFileSync(path.join(dir, pattern), remoteAssetContent, "utf8");
+      }
+      return "";
+    }
+    if (cmd === "git" && args[0] === "config") {
+      if (args[1] === "user.name") gitNameSet = true;
+      if (args[1] === "user.email") gitEmailSet = true;
+      return "";
+    }
+    if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") return "head";
+    if (cmd === "git" && args[0] === "rev-parse" && args[1] === "-q") {
+      if (!currentTagExists) {
+        const err = new Error("missing tag");
+        err.stderr = "missing tag";
+        throw err;
+      }
+      return "tagref";
+    }
+    if (cmd === "git" && args[0] === "rev-parse" && args[1] === "v1.2.3^{commit}") return tagCommit;
+    if (cmd === "git" && args[0] === "tag" && args[1] === "-s") {
+      if (signedTagSucceeds) {
+        currentTagExists = true;
+        return "";
+      }
+      if (signedTagFails) {
+        const err = new Error("signing failed");
+        err.stderr = "signing failed";
+        throw err;
+      }
+    }
+    if (cmd === "git" && args[0] === "tag" && args[1] === "-a") {
+      if (requireIdentityForAnnotatedTag && (!gitNameSet || !gitEmailSet)) {
+        throw new Error("missing tagger identity");
+      }
+      currentTagExists = true;
+      return "";
+    }
+    if (cmd === "git" && args[0] === "push") return "";
+    if (cmd === "gh" && args[0] === "release" && ["upload", "edit", "create"].includes(args[1])) return "";
+    throw new Error(`unexpected command: ${cmd} ${args.join(" ")}`);
+  };
+  return { runner, calls };
+}
+
+function fakeArchiveWriter({ assetPath }) {
+  fs.writeFileSync(assetPath, "deterministic test asset", "utf8");
+}
+
+test("release publisher: default runners include subprocess stderr in thrown errors", () => {
+  assert.throws(
+    () => defaultRunner(process.execPath, ["-e", "console.error('stderr detail'); process.exit(7)"]),
+    /stderr detail/,
+    "text runner errors must retain stderr for release diagnosis");
+  assert.throws(
+    () => defaultBytesRunner(process.execPath, ["-e", "process.stderr.write('binary stderr'); process.exit(8)"]),
+    /binary stderr/,
+    "byte runner errors must retain stderr for release diagnosis");
+  assert.throws(
+    () => defaultRunner("definitely-not-a-real-command-udflow", []),
+    /ENOENT|not found|cannot find/i,
+    "runner spawn failures must retain the launch error");
+});
+
+test("release publisher: published release verifies matching assets without clobber", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: "false" });
+    const result = runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, log: () => {} });
+    assert.strictEqual(result.action, "verified-published-assets");
+    assert.ok(calls.some((c) => c.join(" ").includes("gh release download v1.2.3")), "published release path must verify remote assets");
+    assert.ok(!calls.some((c) => c.join(" ").includes("gh release upload v1.2.3")), "published release path must not clobber matching assets");
+    assert.ok(!calls.some((c) => c.join(" ").includes("gh release create")), "published repair must not create a release");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: published release rejects checksum files naming the wrong asset", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: "false", remoteChecksumName: "WRONG-NAME.tar.gz" });
+    assert.throws(() => runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, log: () => {} }),
+      /checksum names 'WRONG-NAME\.tar\.gz'/);
+    assert.ok(!calls.some((c) => c.join(" ").includes("gh release upload")), "wrong checksum filename must not upload without repair flag");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: published release repairs checksum files naming the wrong asset only with repair flag", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: "false", remoteChecksumName: "WRONG-NAME.tar.gz" });
+    const result = runRelease({
+      root: tree,
+      tmpDir: tmp,
+      runner,
+      archiveWriter: fakeArchiveWriter,
+      env: { UDFLOW_REPAIR_PUBLISHED_RELEASE_ASSETS: "true" },
+      log: () => {},
+    });
+    assert.strictEqual(result.action, "repaired-published-assets");
+    assert.ok(calls.some((c) => c.join(" ").includes("gh release upload v1.2.3") && c.includes("--clobber")),
+      "explicit repair must upload corrected archive and checksum");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: published release rejects malformed multiline checksum files", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({
+      state: "false",
+      remoteChecksumText: (hash, assetName) => `${hash}  ${assetName}\n${hash}  ${assetName}\n`,
+    });
+    assert.throws(() => runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, log: () => {} }),
+      /expected exactly one SHA-256 checksum line/);
+    assert.ok(!calls.some((c) => c.join(" ").includes("gh release upload")), "malformed checksum must not upload without repair flag");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: published release repairs malformed checksum files only with repair flag", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({
+      state: "false",
+      remoteChecksumText: (hash, assetName) => `${hash}  ${assetName}\n${hash}  ${assetName}\n`,
+    });
+    const result = runRelease({
+      root: tree,
+      tmpDir: tmp,
+      runner,
+      archiveWriter: fakeArchiveWriter,
+      env: { UDFLOW_REPAIR_PUBLISHED_RELEASE_ASSETS: "true" },
+      log: () => {},
+    });
+    assert.strictEqual(result.action, "repaired-published-assets");
+    assert.ok(calls.some((c) => c.join(" ").includes("gh release upload v1.2.3") && c.includes("--clobber")),
+      "explicit repair must upload corrected archive and checksum");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: published release mismatch fails closed without repair flag", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: "false", remoteAssetContent: "old asset" });
+    assert.throws(() => runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, log: () => {} }),
+      /Refusing to clobber published assets/);
+    assert.ok(!calls.some((c) => c.join(" ").includes("gh release upload")), "published mismatch must not upload without repair flag");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: published release missing assets fail closed without repair flag", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: "false", downloadFailures: ["udflow-v1.2.3-plugin.tar.gz"] });
+    assert.throws(() => runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, log: () => {} }),
+      /missing udflow-v1\.2\.3-plugin\.tar\.gz or udflow-v1\.2\.3-plugin\.tar\.gz\.sha256/);
+    assert.ok(!calls.some((c) => c.join(" ").includes("gh release upload")), "missing published assets must not upload without repair flag");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: published release missing assets repair only with explicit flag", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: "false", downloadFailures: ["udflow-v1.2.3-plugin.tar.gz"] });
+    const result = runRelease({
+      root: tree,
+      tmpDir: tmp,
+      runner,
+      archiveWriter: fakeArchiveWriter,
+      env: { UDFLOW_REPAIR_PUBLISHED_RELEASE_ASSETS: "true" },
+      log: () => {},
+    });
+    assert.strictEqual(result.action, "repaired-published-assets");
+    assert.ok(calls.some((c) => c.join(" ").includes("gh release upload v1.2.3") && c.includes("--clobber")),
+      "explicit repair must upload archive and checksum when published assets cannot be verified");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: published release download infrastructure failures fail closed even with repair flag", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  const asset = "udflow-v1.2.3-plugin.tar.gz";
+  try {
+    const { runner, calls } = makeReleaseRunner({
+      state: "false",
+      downloadFailures: [asset],
+      downloadFailureStderr: { [asset]: "HTTP 403: rate limit" },
+    });
+    assert.throws(() => runRelease({
+      root: tree,
+      tmpDir: tmp,
+      runner,
+      archiveWriter: fakeArchiveWriter,
+      env: { UDFLOW_REPAIR_PUBLISHED_RELEASE_ASSETS: "true" },
+      log: () => {},
+    }), /Unable to download published release assets.*HTTP 403: rate limit/s);
+    assert.ok(!calls.some((c) => c.join(" ").includes("gh release upload")),
+      "fatal download failures must not repair/upload because auth or transport state is unknown");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: published release mismatch repairs only with explicit flag", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: "false", remoteAssetContent: "old asset" });
+    const result = runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, env: { UDFLOW_REPAIR_PUBLISHED_RELEASE_ASSETS: "true" }, log: () => {} });
+    assert.strictEqual(result.action, "repaired-published-assets");
+    assert.ok(calls.some((c) => c.join(" ").includes("gh release upload v1.2.3") && c.includes("--clobber")),
+      "explicit repair must upload archive and checksum with --clobber");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: draft release uploads assets then promotes", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: "true" });
+    const result = runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, log: () => {} });
+    assert.strictEqual(result.action, "promoted-draft");
+    assert.ok(calls.some((c) => c.join(" ").includes("gh release upload v1.2.3") && c.includes("--clobber")),
+      "draft path must upload archive and checksum");
+    assert.ok(calls.some((c) => c.join(" ").includes("gh release edit v1.2.3") && c.includes("--draft=false")),
+      "draft path must promote to published");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: missing release creates tag and release", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: null, tagExists: false });
+    const result = runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, log: () => {} });
+    assert.strictEqual(result.action, "created-release");
+    assert.ok(calls.some((c) => c.join(" ") === "git tag -a v1.2.3 -m udflow v1.2.3"), "fresh path must create an annotated tag");
+    assert.ok(calls.some((c) => c.join(" ").includes("gh release create v1.2.3") && c.includes("--verify-tag")),
+      "fresh path must create a release with --verify-tag");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: signed tag success does not fall back to unsigned tag", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: null, tagExists: false, signedTagSucceeds: true });
+    const result = runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, env: { HAS_GPG: "true" }, log: () => {} });
+    assert.strictEqual(result.action, "created-release");
+    assert.ok(calls.some((c) => c.join(" ") === "git tag -s v1.2.3 -m udflow v1.2.3"), "signed path must try signed tag");
+    assert.ok(!calls.some((c) => c.join(" ") === "git tag -a v1.2.3 -m udflow v1.2.3"), "signed success must not create unsigned tag");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: signing failure falls back to unsigned tag with bot identity", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: null, tagExists: false, signedTagFails: true, requireIdentityForAnnotatedTag: true });
+    const result = runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, env: { HAS_GPG: "true" }, log: () => {} });
+    assert.strictEqual(result.action, "created-release");
+    const configNameIndex = calls.findIndex((c) => c.join(" ") === "git config user.name github-actions[bot]");
+    const unsignedIndex = calls.findIndex((c) => c.join(" ") === "git tag -a v1.2.3 -m udflow v1.2.3");
+    assert.ok(configNameIndex >= 0 && unsignedIndex > configNameIndex, "fallback must configure bot identity before unsigned tag");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: tag mismatch fails before draft/new publication", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ state: "true", tagCommit: "old" });
+    assert.throws(() => runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, log: () => {} }),
+      /Refusing to publish or promote release assets/);
+    assert.ok(!calls.some((c) => c.join(" ").includes("gh release upload")), "tag mismatch must stop before upload");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("release publisher: release discovery errors fail closed unless they are not-found", () => {
+  const tree = makeReleaseRoot();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "udflow-release-tmp-"));
+  try {
+    const { runner, calls } = makeReleaseRunner({ fatalReleaseView: true });
+    assert.throws(() => runRelease({ root: tree, tmpDir: tmp, runner, archiveWriter: fakeArchiveWriter, log: () => {} }),
+      /Unable to inspect GitHub release/);
+    assert.ok(!calls.some((c) => c.join(" ").includes("gh release create") || c.join(" ").includes("gh release upload")),
+      "fatal discovery errors must not fall through to create/upload");
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("validate-structure: missing release workflow FAILS (release asset guard)", () => {
+  const tree = copyRepoTree();
+  try {
+    fs.rmSync(path.join(tree, ".github", "workflows", "validate.yml"));
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "missing release workflow must fail closed");
+    assert.match(out, /missing release workflow/, "the failure must name the release workflow guard");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: missing release publisher script FAILS (release asset guard)", () => {
+  const tree = copyRepoTree();
+  try {
+    fs.rmSync(path.join(tree, ".github", "scripts", "publish-release.mjs"));
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "missing release publisher script must fail closed");
+    assert.match(out, /missing release publisher script/, "the failure must name the publisher script guard");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: release workflow must syntax-check the publisher script", () => {
+  const tree = copyRepoTree();
+  try {
+    const p = path.join(tree, ".github", "workflows", "validate.yml");
+    fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace(
+      "run: node --check .github/scripts/publish-release.mjs",
+      "run: echo skipped-publisher-syntax-check"), "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "removing the publisher syntax check must fail closed");
+    assert.match(out, /syntax-check/, "the failure must name the missing syntax-check contract");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: release workflow must delegate to the publisher script as an actual run line", () => {
+  const tree = copyRepoTree();
+  try {
+    const p = path.join(tree, ".github", "workflows", "validate.yml");
+    fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace(
+      "run: node .github/scripts/publish-release.mjs",
+      "# run: node .github/scripts/publish-release.mjs\n        run: echo skipped-publisher"), "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "commented-out publisher command must fail closed");
+    assert.match(out, /release job must call/, "the failure must name the release delegation contract");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: NOT READY example must stay marked non-evidence", () => {
+  const tree = copyRepoTree();
+  try {
+    const p = path.join(tree, "examples", "not-ready-run.md");
+    fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("Evidence tier: illustrative only, not Type-B evidence", "Evidence tier: publicly verifiable"), "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "illustrative NOT READY example must not lose its non-evidence marker");
+    assert.match(out, /required provenance marker/, "the failure must name the provenance guard");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: illustrative packet/report examples must keep their disclaimers", () => {
+  for (const [rel, marker] of [
+    ["examples/review-packet.md", "not the verbatim packet"],
+    ["examples/final-report-compact.md", "not a verbatim transcript"],
+    ["examples/final-report-full.md", "not reconstructed"],
+  ]) {
+    const tree = copyRepoTree();
+    try {
+      const p = path.join(tree, rel);
+      fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace(marker, "claim removed"), "utf8");
+      const { code, out } = runValidator(tree);
+      assert.notStrictEqual(code, 0, `${rel} must not lose its illustrative/provenance marker`);
+      assert.match(out, /required provenance marker/, "the failure must name the provenance guard");
+    } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+  }
 });
 
 test("validate-structure: a shipped forbidden artifact FAILS (distribution hygiene)", () => {

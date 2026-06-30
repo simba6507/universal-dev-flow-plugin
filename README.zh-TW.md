@@ -4,247 +4,204 @@
 
 [English](README.md) · **繁體中文**
 
-**Claude Code 的計劃閘門式程式碼審查與就緒判定工作流。** udflow 要求 Claude 先擬定計劃、取得你的核准後才寫任何程式碼,依你陳述的意圖審查變更,並以明確的出貨／不出貨裁決收尾——而非逕自完成後回報一句「done」。
+**udflow 讓 Claude Code 像謹慎的 release engineer 一樣工作：** 先規劃、經你核准後才改 code、用證據驗證，最後給出 `READY` / `FIX REQUIRED` / `NOT READY`。
+
+udflow 是 Claude Code 的計劃閘門式程式碼審查與 release-readiness workflow。它不是 bug scanner、linter、static analysis、CI 替代品，也不是零 bug 保證。它的工作是讓 AI-made change 可追溯：明確意圖、acceptance criteria、最小安全實作、真實驗證證據、依風險挑選 reviewer，以及 gatekeeper verdict。
 
 ```text
-任務 → 理解需求 → Plan（尚未改動程式）→ 你核准 計劃 + 驗收標準
-     → 最小安全變更 → build / test / lint / 瀏覽器佐證
-     → 依風險挑選 reviewer（對著你的意圖）→ Gatekeeper 裁決
-            READY  /  FIX REQUIRED  /  NOT READY   ⟲ 自動修復並重審（有硬上限）
+任務 -> 理解需求 -> Plan（尚未改動程式）-> 你核准 plan + acceptance criteria
+     -> 最小安全變更 -> build / test / lint / browser evidence
+     -> 依風險挑選 reviewer -> Gatekeeper verdict
+            READY / FIX REQUIRED / NOT READY -> 必要時進入 repair loop
 ```
 
-**單次 run 提供什麼**
+## 30 秒理解
 
-- **核准閘門** —— 在你核准計劃*與*其驗收標準之前,不會有任何程式碼變動。
-- **以意圖為本的審查** —— 只啟用與風險相關的專業 reviewer,各自評估變更是否達成你陳述的需求,而非僅止於「有沒有 bug」。
-- **明確的裁決** —— 每次 run 都收斂於 `READY` / `FIX REQUIRED` / `NOT READY`,並自動修復與重審,直到就緒或明確受阻。
+udflow 做三件事：
 
-**適用於「完成」必須等於「可發佈」的工作** —— 合併進 `main`、上線、或變動到認證、資料、契約。對打錯字或快速查看而言並無必要;窮舉式的機械覆蓋請搭配 linter。udflow 是判斷與就緒層,不是 bug 掃描器。
+| 時機 | udflow 補上的紀律 |
+|---|---|
+| **寫程式前** | Claude 重述需求，整理 plan 與 acceptance criteria，並等待你核准。 |
+| **寫程式時** | `implementer` 只做最小安全變更，且不能自我認證。 |
+| **交付前** | 依風險挑選 reviewer 對著你的意圖審查，最後由 `gatekeeper` 判定 `READY` / `FIX REQUIRED` / `NOT READY`。 |
 
-> 🎬 **實機示範：** [udflow-public-demo](https://github.com/kktu6507/udflow-public-demo) —— 一次完整錄下的 `/udflow:run`。
+當「done」必須等於「可發佈」時使用 udflow：合併到 `main`、上線、或動到 authentication、data、contracts、migrations、production behavior、高風險 UI flow。
 
----
+打錯字、純格式化、低風險小改、或只是 quick look 時通常不用 udflow。能用更便宜且確定性的工具時，先用那些工具。
 
-## 它是什麼
-
-- **一套審查 + 就緒判定工作流** —— 低噪音的 reviewer **加上**一道出貨/不出貨閘門。**不是** bug 掃描器；要窮舉請搭配 linter／靜態分析。
-- **可量測的強項 = 精度 + 流程紀律 + 就緒閘門** —— 近乎零誤報，*而非*最大召回。
-- **狀態：早期／實驗性** —— hook 有測試；多代理編排是 prompt 驅動。把它當有紀律的鷹架,不是保證。
-
-**benchmark 顯示了什麼** —— 對 6 種語言的真實歷史 bug 進行盲測,並由獨立評審計分（完整方法、逐次紀錄與限制見 [`EVIDENCE.md`](EVIDENCE.md)）：
-
-- **可信賴的裁決。** udflow 經過調校,使有把握的 `major`/`blocker` 幾乎都是真缺陷;閘門會裁減過度敏感的發現,因此它真正擋下的都站得住——這份精度,正是判決值得用來把關 release 的原因。
-- **panel 與閘門才是槓桿。** 依風險挑選的 panel 比任何單一 reviewer 抓到明顯更多,且*嚴格優於*單跑——救回單一 reviewer 會合理化掉的真缺陷而毫無損失。這項提升是**結構性**的——多重視角加上一道彙整的閘門,而非更強的 prompt——並可跨趟重現。這正是 udflow 所立基的原則。
-- **召回隨你提供的意圖而變。** 透過 **Review Packet** 交付清楚的契約能顯著提升 reviewer 的抓取量,而 udflow 會將該意圖端到端帶著走。窮舉式的機械覆蓋請搭配 linter;udflow 是判斷與就緒閘門,不是 bug 掃描器。
-
-<details>
-<summary><b>證據 —— 方法與限制</b></summary>
-
-reviewer 對真實歷史 bug 的**修復前**程式碼**盲跑**（6 種語言／多個外部 repo）,由**獨立評審**對照已知修復計分。可重現的訊號：有把握的發現是高精度的,而一個 **panel** 能救回單一 reviewer 漏掉的真缺陷——這正是 udflow 設計圍繞的結構性召回提升,含一次現行 build（Opus 4.8）的 **2×2 刷新**（121 bug／13 repo／3 趟）。孤立程式碼的盲測召回是完整一次 run 的*代理指標*（完整 run 還會帶上計劃脈絡、意圖與閘門）,所以這刻畫的是 reviewer 的*觸及範圍*,不是工作流的結果。完整方法、逐次紀錄與限制見 [`EVIDENCE.md`](EVIDENCE.md)（手動紀錄——udflow **無遙測**）。誠實標籤：一個*已被刻畫的*早期／beta——是方向性指標,不是保證。
-
-</details>
-
----
+> 實機示範：[udflow-public-demo](https://github.com/kktu6507/udflow-public-demo) 記錄了一次完整 `/udflow:run`。
 
 ## 快速開始
 
-前置需求：**Claude Code** + PATH 上有 `node`（hook 是 Node 腳本；沒 Node 就靜默 no-op）。
+前置需求：**Claude Code** + `PATH` 上有 `node`。hook 是 Node 腳本；沒有 Node 時會靜默 no-op。
 
 ```text
 # 在你的專案目錄、Claude Code 內：
 /plugin marketplace add kktu6507/universal-dev-flow-plugin
 /plugin install udflow@kktu
-# udflow 出貨時為停用 —— 啟用它：/plugin → Installed → 把 udflow 打開
-#   （或：claude plugin enable udflow@kktu），然後：
+# udflow 出貨時預設停用 - 請在 /plugin 裡把 udflow 切為啟用
+#   或：claude plugin enable udflow@kktu
 /reload-plugins
+
 # 交給它一個任務：
-/udflow:run 修好登入流程,讓 token 過期時會自動 refresh
+/udflow:run 修好登入流程，讓 expired access token 在重試失敗 request 前只 refresh 一次。
 ```
 
-- **安裝 ≠ 啟用。** udflow 以 **opt-in（停用）** 出貨：啟用前 hook 與 skill 都不做事;啟用後會**對非瑣碎工作自動接手**,並放過瑣碎編輯與純 Q&A（要強制完整流程就用 `/udflow:run`）。
-- **marketplace 名稱是 `kktu`**（非 repo 名）→ 安裝 id 是 `udflow@kktu`。
-- **更新：** `/plugin marketplace update kktu` 再 `/reload-plugins`（自訂 marketplace 不會自動更新）。
+- **安裝不等於啟用。** 啟用前，udflow 的 hooks 與 skills 都不做事。
+- **Marketplace 名稱是 `kktu`。** 安裝 id 是 `udflow@kktu`。
+- **更新：** `/plugin marketplace update kktu` 後跑 `/reload-plugins`。
+- **健康檢查：** gate 沒擋、hook 沒反應、或 Node 可能不存在時，跑 `/udflow:doctor`。
 
-**疑難排解**
+## 好任務長什麼樣子
 
-| 症狀 | 處理 |
+udflow 最吃任務品質。好的任務會交代 intent、acceptance criteria、不能改什麼、預期驗證，以及風險區域。
+
+```text
+/udflow:run <change request>
+
+需求：
+- ...
+
+驗收條件：
+- ...
+
+不可變更：
+- ...
+
+預期驗證：
+- ...
+
+風險區域：
+- auth / data / contract / UI / performance / rollback
+```
+
+請看 [`docs/task-writing-guide.md`](docs/task-writing-guide.md)（英文），裡面有 bad / better / best 範例，以及 auth、API contract、UI state、migration 任務模板。
+
+## 何時使用
+
+| 適合使用 udflow | 通常不必使用 udflow |
 |---|---|
-| 安裝「找不到」 | 用 `udflow@kktu`（marketplace 名,非 repo）；以 `/plugin marketplace list` 確認 |
-| 閘門從不擋／沒反應 | 跑 **`/udflow:doctor`** 看 hook 健康報告；檢查 `node --version`（沒 Node → 所有 hook no-op）；設 `UDFLOW_HOOK_DEBUG=1` 看原始 trace |
-| 計劃閘門擋到別的專案 | 在該專案 `.claude/settings.json` 設 `"udflow": { "planGate": false }` |
-| `opus` 不可用 | `security-reviewer` / `gatekeeper` 退回 session 模型並說明（裁決信心較低） |
-| 失敗記憶出現在無關專案 | 全域 `~/.claude/FAILURE_MEMORY.md` 預設到處注入；加專案 `ai/FAILURE_MEMORY.md`,或移除全域檔 |
+| auth / authz 改動 | typo |
+| API 或 schema contract 改動 | 純格式化 |
+| DB migration / data integrity | 瑣碎 local copy edits |
+| UI flow、accessibility、browser-visible states | 快速非 release review |
+| release 前需要較高信心的變更 | CI/linter 已覆蓋的機械檢查 |
 
----
+## 非目標
 
-## 運作流程
+udflow 不是：
 
-一次 run 會歷經七個階段;中間那道核准閘門,是沒有你便無法跨越的關口。
+- CI 的替代品
+- linter 或 static analysis 的替代品
+- 零 bug 保證
+- 窮舉式 mechanical scanner
+- 每個小改都必須使用的工具
+
+udflow 應搭配：
+
+- unit / integration tests
+- linters / formatters
+- static analysis / dependency scanners
+- high-risk release 的 human review
+- 外部系統相關變更的 controlled live-environment evidence
+
+Linters 抓機械問題。Tests 驗證已知預期行為。Static analysis 抓已知 vulnerability patterns。udflow 判斷 AI-made change 是否滿足陳述意圖、是否 ready to ship。
+
+## 運作方式
 
 | 階段 | 發生什麼 |
 |---|---|
-| **理解** | 重述需求；真有歧義時 `AskUserQuestion`（業務行為、契約、破壞性操作、UX） |
-| **規劃**（plan mode,唯讀） | 高風險工作：把計劃接地到程式碼現實 + 把需求磨成**契約級意圖** + 邊界輸入清單；以 `ExitPlanMode` 呈現 |
-| **你核准** | 在此之前不寫任何東西——你同時核准**驗收條件** |
-| **實作** | `implementer` 做**最小安全變更** |
-| **驗證** | build / test / lint / typecheck + 瀏覽器佐證；**實際跑過高風險邊界輸入**；指令**退出碼為權威** |
-| **審查** | 只跑**與風險相關**的 reviewer,對著你陳述的意圖審 |
-| **Gatekeeper** | 彙整 findings、**依真實衝擊重評**、逐條檢查驗收條件 → `READY` / `FIX REQUIRED` / `NOT READY` → **修復迴圈**直到就緒或明確受阻（硬上限：同 blocker 連兩輪 → Stuck Summary） |
+| **Understand** | 重述需求；只有當歧義會改變 behavior、contracts、destructive operations、security 或 UX 時才問。 |
+| **Plan** | 保持唯讀，把做法紮根到 repo，整理 acceptance criteria。 |
+| **Approval** | 你核准 plan 與 criteria 前不改 code。 |
+| **Implement** | `implementer` 做最小安全變更。 |
+| **Verify** | 依需要跑 build / test / lint / typecheck / browser evidence；command exit status 是權威。 |
+| **Review** | 只跑與風險相關的 reviewer，且使用聚焦的 Review Packet，不靠整段 thread history。 |
+| **Gatekeeper** | 彙整 findings、依 impact 重評、逐條檢查 acceptance criteria，判定 `READY` / `FIX REQUIRED` / `NOT READY`。 |
 
-**裁決背後的紀律：**
+Verdicts 是 release-readiness decisions，不是絕對真理。請看 [`docs/how-to-read-verdicts.md`](docs/how-to-read-verdicts.md)（英文）。
 
-- **計劃閘門** —— hook 在 plan mode 期間擋下編輯,使核准前不會有任何變動（預設開啟；可逐專案 opt-out；見 [Hooks](#hooks)）。
-- **驗收條件** —— 關鍵訊號不是「沒有 bug」,而是*是否做到你所要求、且已確認*;未達成且未延後的條件會擋下 `READY`。
-- **驗證哨符** —— 大型 run 以單一最終報告收尾,內含機器可讀的 `udflow:verify=pass|fail|unrun|na` 與 `udflow:delivery=held|shipped`（由 Stop hook 讀取）。
-- **失敗記憶** —— 過往教訓存於 `ai/FAILURE_MEMORY.md`（專案）或 `~/.claude/FAILURE_MEMORY.md`（全域）;開場注入精簡的標題+tags 摘要,完整的 prevention rule 內文則按需讀取（於 `###` 標題結尾加上 `(expired)` / `(superseded …)` 即退役該條）。
-- **設計契約** —— UI 工作時,專案的設計語言記錄於 committed `design.md`;`ui-ux-reviewer` 據以審查一致性（引用具體的 token 或段落）,而非每次重新推斷,`planner-creator` 並可從既有 UI 立基。無障礙安全底線恆凌駕其上;`ui-ux-pro-max` 會將全新 pattern 回饋其中。
-- **深度模式** —— 加深度,而非增加 reviewer。**Tier 1**（在高風險且具 Workflow 能力的 session 自動啟用）以確定性 graph 執行*同一組*面板與 gatekeeper,使各步驟依序執行（成本 ≈ 一般；以 `--no-deep` 退出）。**Tier 2**（`--deep`）另加對每個 blocker/major 的對抗驗證、最高 effort,以及 UI 必需的真實瀏覽器佐證;當所需的應用程式未在執行時,會透過內建 `/run` 技能將其啟動,並僅收掉自己啟動的部分（會揭露;標準模式不會執行）。
+## 範例與證據
 
----
+- [`examples/ready-run.md`](examples/ready-run.md)（英文）- 從 `EVIDENCE.md` 抽取的真實 `READY` 範例。
+- [`examples/fix-required-run.md`](examples/fix-required-run.md)（英文）- 從 `EVIDENCE.md` 抽取的真實 `FIX REQUIRED -> READY` repair-loop 範例。
+- [`examples/not-ready-run.md`](examples/not-ready-run.md)（英文）- illustrative `NOT READY` 範例，明確標示不算 evidence。
+- [`examples/review-packet.md`](examples/review-packet.md)、[`examples/final-report-compact.md`](examples/final-report-compact.md)、[`examples/final-report-full.md`](examples/final-report-full.md)（英文）展示 reviewer input 與 delivery output 的 contract-field examples；它們是 illustrative，不是逐字 transcripts。
 
-## 10 個 subagent
+因為 udflow **沒有 telemetry**，real-world validation 以人工記錄為準。`EVIDENCE.md` 是唯一真實來源：
 
-你無需手動挑選 reviewer;udflow 依**風險**組成面板——打錯字不啟用任何 reviewer,動到認證則納入 security reviewer。完整名單:
+| Track-2 指標 | 目前狀態 |
+|---|---|
+| Type-B verified live runs | 6 / 10 |
+| Distinct real projects | 2 / 3 |
+| Non-maintainer runs | 0 / 1 |
 
-| Agent | 角色 | 何時加入 | 模型 |
-|---|---|---|---|
-| `planner-creator` | 用真實程式碼紮根計畫、草擬方法、預選面板、偵測/建議 `design.md`（可從既有 UI 立基）（唯讀；輔助計畫核准，絕不取代） | 規劃 | inherit |
-| `implementer` | 最小安全變更；絕不自我認證 | 計劃核准後 | inherit |
-| `spec-reviewer` | 需求／業務規則／契約符合度 | 核心（非瑣碎） | inherit |
-| `test-reviewer` | 缺測試、薄弱驗證、邊界、回歸 | 核心（非瑣碎） | inherit |
-| `code-reviewer` | 本地品質、可維護、框架用法、效率 | 非瑣碎程式變更 | inherit |
-| `security-reviewer` | auth/authz、輸入處理、secret、信任邊界 | 安全相關風險 | **opus** |
-| `architecture-reviewer` | 分層、邊界、相依方向、放置 | 結構性疑慮 | inherit |
-| `operability-reviewer` | 可觀測性、retry/timeout、部署、rollback | runtime/正式環境影響 | inherit |
-| `ui-ux-reviewer` | 易用性、互動、版面、狀態、無障礙；存在時對 `design.md` 一致性 | UI 影響 | inherit |
-| `gatekeeper` | 彙整、依衝擊重評、判定就緒 | reviewer 跑完後 | **opus** |
+最有價值的貢獻：在真實工作上跑 udflow，然後開一個 [Verified udflow run issue](https://github.com/kktu6507/universal-dev-flow-plugin/issues/new?template=verified-run.yml)。請貼上 udflow 在結尾印出的 `### Live run` block，並保留 misses、false alarms、cost、follow-up outcome；誠實的負面資訊才是 evidence 的重點。
 
-- **reviewer 依角色為唯讀** —— 僅持有 `Read` / `Grep` / `Glob` / `Bash` 供檢查,**不含** editor 工具;由它們提出修法,再由 `implementer` 執行。
-- **正確性關鍵路徑配置至少兩個獨立視角** —— parsing、數值／編碼／溢位、並行、安全、資料完整性——因為 benchmark 顯示,第二個 reviewer 能可靠救回第一個合理化掉的缺陷。
+## Hooks 與安全模型
 
----
+只要 plugin 被啟用，五個零依賴 Node hooks 會在每個 session 執行。它們 local-only、fail-open，只使用 Node built-ins（`fs`、`os`、`path`、`crypto`）。
 
-## Hooks
-
-五個 Node hook。全部 **fail-open**——任何錯誤、或 PATH 上沒 Node,都什麼都不做且絕不弄壞 session;並**純本地**：不連網、不開子行程、不跑下載程式碼,只用內建 `fs` / `os` / `path` / `crypto`。只要 plugin 啟用,它們便在*每一個* session 執行,而非僅 udflow 任務。
-
-| Hook（事件） | 它能做什麼 | 預設 · opt-out |
+| Hook 腳本 | 觸發事件 | 用途 |
 |---|---|---|
-| `plan-gate.js`（PreToolUse） | **擋下**編輯 + *明顯的* Bash 寫檔,**只在 plan mode**；放行 `~/.claude/plans/` | 開 · `"udflow":{"planGate":false}` |
-| `destructive-guard.js`（PreToolUse） | 在**任何**模式對不可復原 Bash **詢問**（永不硬擋）：`rm -rf`（含分開的 `rm -r -f`）、`git reset --hard`、`git push --force`、`find -delete`、`dd of=`、`mkfs`、`shred` —— 以及 PowerShell 形式 `Remove-Item -Recurse` / `Format-Volume` / `Clear-Disk`（Windows / Copilot） | 開 · `"udflow":{"destructiveGuard":false}` |
-| `load-failure-memory.js`（SessionStart） | **讀取**你的 `FAILURE_MEMORY.md`,把經 nonce 圍欄、role-marker 中和的摘要注入你自己的 session | 開 · 沒檔 → no-op |
-| `compact-fidelity.js`（SessionStart · `compact`） | 在 context 壓縮**之後**立刻**注入**一段精簡指示,讓壓縮後的新 context 重新立起 udflow 自己的構件（reviewer 裁決、acceptance-criteria 狀態、`[unverified]` 標記、Run Card 數字、subagent 發現、未回答的需求）—— 只注入指示、不讀檔。0.27.3 由 `PreCompact` 搬遷而來（Claude Code 會拒絕 `PreCompact` hook 的注入輸出） | 開 · `"udflow":{"preserveOnCompact":false}` |
-| `orchestration-check.js`（Stop） | 收尾**提示**：宣稱 `READY` 卻沒跑面板、阻擋裁決被無視、或 required check 紅燈/未跑卻仍交付時警告 | 提示 · 僅 `UDFLOW_ENFORCE_STOP` 時硬擋 |
+| `plan-gate.js` | `PreToolUse` | 在 plan mode 中擋下 edit tools 與明顯 Bash writes。 |
+| `destructive-guard.js` | `PreToolUse` | 對 `rm -rf`、`git reset --hard`、`git push --force`、PowerShell `Remove-Item -Recurse` 等狹義不可復原 destructive commands 先詢問。 |
+| `load-failure-memory.js` | `SessionStart` | 讀取專案 `ai/FAILURE_MEMORY.md` 或全域 `~/.claude/FAILURE_MEMORY.md`，並注入 nonce-fenced、untrusted digest。 |
+| `compact-fidelity.js` | `SessionStart` · `compact` | context compaction 後重新注入精簡 workflow-continuity reminder。 |
+| `orchestration-check.js` | `Stop` | delivery claim 與 missing panel、blocking verdict、failed/unrun verification、missing live-run evidence 矛盾時提示。 |
 
-- **它們絕不會：** 改系統/安全設定、改檔案權限、刪任何東西（`destructive-guard` 只會在你自己的刪除/抹除指令前*先詢問*——本身不刪）、或把你的程式碼或 transcript 傳到任何地方。
-- **盡力而為、非 sandbox。** `destructive-guard` 與 plan-gate 的 Bash tripwire 是窄而高信心的 deny-list；混淆形式（`node -e`/`python -c` 一行式、`bash -c`、管線刪除 `… | Remove-Item`、cmd.exe `rd /s`/`del /s`、字內單引號）可能漏接——它們只 `ask`/`deny`,從不是唯一防線。要每個 session 都有硬保證,請在 settings 設預設 plan mode。
-
----
-
-## 選項與 opt-in
-
-一切**預設關閉／依風險比例**——要你才 opt in。
-
-**啟用 / 停用**
-
-| 選項 | 效果 | 預設 |
-|---|---|---|
-| 在 `/plugin` 啟用（或 `claude plugin enable udflow@kktu`） | 把 hook + skill 打開 | **停用** |
-| `.claude/settings.json` 設 `"udflow": { "planGate": false }` | 關閉此專案 plan-mode 寫檔閘門 | 閘門**開**（缺失/壞掉 → 開） |
-| `.claude/settings.json` 設 `"udflow": { "destructiveGuard": false }` | 關閉此專案破壞性指令確認 | 守衛**開**（缺失/壞掉 → 開） |
-| `.claude/settings.json` 設 `"udflow": { "preserveOnCompact": false }` | 關閉此專案壓縮保真提示 | 提示**開**（缺失/壞掉 → 開） |
-| `~/.copilot/settings.json` 設 `{ "enabledPlugins": { "udflow@kktu": false } }` | **僅在 Copilot CLI** 停用 | 已安裝即啟用 |
-| `~/.copilot/settings.json` 設 `{ "disableAllHooks": true }` | Copilot 下關閉所有 plugin hook | hook 開 |
-
-**執行旗標** —— `/udflow:run <flags> <task>`
-
-| 旗標 | 效果 | 預設 |
-|---|---|---|
-| `--deep`（也可 `deep:` / `ultra:`） | Tier-2：對 blocker/major 對抗驗證 + 最高 effort；有 UI 時驅動真實瀏覽器佐證；當 App（網頁或後端/API）還沒在跑時**透過 `/run` 自動啟動 App**,事後收掉自己起的程序 | 關（高風險時 Tier-1 仍自動） |
-| `--no-deep` / `--shallow` | 退出 Tier-1 確定性強制（面板照跑,改模型編排） | 高風險時 Tier-1 自動 |
-| `--lite` | 最小充分面板 + 跳過深度（高風險訊號時保留一個 safety reviewer） | 關（面板依風險比例） |
-| `--report full` | 詳細報告：逐 agent 活動、Files Changed、完整成本表（Input/Output/Cache-write/Cache-read）、after 截圖 | 關（精簡報告） |
-
-**環境變數**
-
-| 變數 | 效果 | 預設 |
-|---|---|---|
-| `UDFLOW_HOOK_DEBUG=1` | hook 寫 trace（stderr / 暫存檔）以利除錯 | 未設（安靜） |
-| `UDFLOW_ENFORCE_STOP=1` | 把 Stop 提示升級為硬**阻擋**——僅當有真實 gatekeeper 阻擋裁決**且** `udflow:delivery=shipped`（永不靠 prose）；以 `udflow:delivery=held` 逃生。Claude-Code 專屬（見 [相容性](#相容性)） | 未設（僅提示） |
-
-**選用的外部能力**（Detect → Use → Else-Disclose —— 有就用,沒有就揭露缺口）
-
-| 能力 | 效果 | 預設 |
-|---|---|---|
-| 每位 reviewer 的 MCP（`udflow/.mcp.json`；範本 `mcp.example.json`） | 給 reviewer 唯讀 MCP 工具 | 關（空 `.mcp.json`） |
-| Codex | 跨模型第二意見／救援（資料外送到外部模型） | 關（opt-in） |
-| `ui-ux-pro-max` skill | UI 設計智慧；設計系統／設計生成範疇為**必要諮詢**（否則揭露回退） | 已安裝即用 |
-| `design.md`（專案設計契約） | 專案設計語言的 committed 契約；`ui-ux-reviewer` 對它審 UI 一致性；`planner-creator` 偵測/建議,並可從既有 UI 立基 | 存在則用（否則走 baseline） |
-| Claude in Chrome（`mcp__Claude_in_Chrome__*`；替代 `mcp__Claude_Preview__*` / `mcp__playwright__*`） | 真實瀏覽器佐證；`--deep` + UI 時必要。**會驅動你的真實已登入瀏覽器**——可能曝露 secret/PII；請用非正式環境目標 | 已接上即用 |
-| `/run` 技能（姊妹技能） | `--deep` 時,App（網頁或後端/API）還沒在跑就把它啟動起來供驗證;udflow 委派到這裡而非硬寫啟動指令,且只收掉自己起的程序 | 有就用 |
-| `output/udflow/`（消費端專案） | 保留的 run 產物：`evidence/` 截圖、`review/diff.patch`、`progress.md` ledger —— **自動建頂層 `output/udflow/.gitignore`** 讓整棵樹自我保護（截圖可能含 secret/PII）；萬一未被 ignore 會警告 | 按需建立 |
-| `ai/FAILURE_MEMORY.md` / `~/.claude/FAILURE_MEMORY.md` | 開場 + planning 讀過往失敗教訓 | 按需建立 |
-
----
-
-## 每次執行的成本
-
-兩個很不同的數字,以**典型真實 app 工作**的數量級估計呈現,而非保證。[`EVIDENCE.md`](EVIDENCE.md) 中記錄的數字*更低*——那些是 udflow 自己小型 Markdown/Node repo 上的小範圍改動（~0.1–1.5M new tokens,本表的下限）。codebase 更大、邏輯更複雜、修復迴圈更多時請往上估;下方的 ~47M 是整個 P0–P3 build 跨約 7 次 run,而非單一一次。
-
-- **New tokens** —— 首次處理（input + cache 建立 + output）。反映真實工作量;以此為規劃基準。
-- **Billable total**（`/cost`）—— *還*計入每代理每回合重讀的 cache-read → **約 new-token 的 20–30×**。但 cache-read 費率約為 input 的 ⅒,所以**金額其實貼近 new-token**,沒那個倍數嚇人。
-
-| 任務（一次 run） | reviewer | New tokens | 牆鐘 |
-|---|---|---|---|
-| 輕 | `--lite` —— 僅核心 | ~0.5–2M | 幾分鐘 |
-| 典型 | 3–5 個 + 一輪修復 | ~2–7M | ~5–15 分 |
-| 深 | `--deep`、數輪修復 | >10M | 20–40 分 |
-
-- **每次 run** = 一個 implement → review → fix → gate 週期。多增量功能會疊好幾次（我們自用一次完整 P0–P3：**~47M new / ~1B billable**,約 7 個週期 / ~94 個 subagent / 一天）。
-- **驅動 ≈ context/repo 大小 × 回合數 × subagent 數。** `opus`、`--deep`、額外修復迴圈會放大；平行 reviewer 縮短牆鐘但不減 token。
-- **可調** —— `--lite`（最省）、`--deep`（最深）、`--no-deep`；面板 + 成本層級會在 plan gate 講明、最終報告複述。`--report full` 把花費依計費元件拆開。
-
----
-
-## 何時 udflow 值得這個成本
-
-udflow 是 **精度 + 流程 + 一道閘門**,不是窮舉抓 bug。能用更便宜的工具就先用:
-
-- **linter / 靜態分析** 更便宜、確定性、抓機械式／風格／已知模式問題 —— udflow **不取代**它,兩者搭配。
-- **一次性 AI review**（如編輯器的 review 指令）給 findings 很快,但沒有 plan gate、沒有依意圖挑選審查員、沒有驗收條件檢查、沒有修復迴圈、也沒有出貨／不出貨判決。
-- **udflow** 是給「**這個必須 release-ready**」的:plan gate 之後的低噪音、依意圖的審查,一個站得住腳的 `READY` / `FIX REQUIRED` / `NOT READY` 判決,以及有界的修復迴圈。它花更多 token 與時間 —— 對 typo 或隨手看一眼是殺雞用牛刀。
-
-誠實定位:linter + 測試抓更多*機械式* bug、又更便宜;udflow 的強項是**判斷層級發現的近零誤報 + 那道閘門**,以及隨你給的意圖而變的召回。量化的 head-to-head（vs linter／一次性 review）需要 validated benchmark harness（[`EVIDENCE.md`](EVIDENCE.md)）,尚未進行。
-
----
+這些 hooks 不會刪檔、不會改系統設定、不會改權限、不會開 subprocess、不會下載 code，也不會傳送 code/transcript。它們是 guardrails，不是 sandbox。詳見 [`SECURITY.md`](SECURITY.md) 與 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
 ## 相容性
 
-udflow 以 **Claude Code** 為目標,其 **subagents** 與 **skills** 也能在 **GitHub Copilot CLI** 載入（1.0.65 實機驗證：`plugin list`、`skill list`、列舉全部 subagent、並觀察到 hook 觸發）。**0.27.x** 的 hook 組已實機驗證可在 Copilot 1.0.65 安裝並載入——`copilot plugin update` 升到 v0.27.1 成功（「Updated 2 skills」）、兩個 skill 都列舉得到,壓縮保真 hook（`compact-fidelity.js`,自 0.27.3 改掛在 `SessionStart`·`compact`,由 `PreCompact` 搬遷而來,後者的注入輸出會被 Claude Code 拒絕）與已驗證的失敗記憶 `SessionStart` hook 同類載入。其注入輸出在 Copilot 下為 no-op（見下表）。跨 harness 載入依各工具有文件記載的 plugin 格式推得。
+udflow 以 Claude Code 為主要 runtime。它也能在 GitHub Copilot CLI 下部分降級運作：plugin format 可載入，但部分 Claude-Code-only hook output 不會被送達。
 
-**Claude-Code 專屬**（在他處優雅降級——絕不報錯）：
+Compatibility 與 conformance smoke 詳情請看 [`docs/compatibility.md`](docs/compatibility.md)（英文）。短版如下：
 
-| 功能 | 在 Copilot CLI 下 |
-|---|---|
-| 計劃閘門強制 | no-op —— Copilot CLI／桌面版**有** Plan 模式（Shift+Tab）,但其 `preToolUse` hook 輸入**不含 permission-mode 欄位**（[hooks 文件](https://docs.github.com/en/copilot/reference/hooks-reference)）,udflow 閘門無從偵測 plan 狀態;Plan 模式下的編輯限制由 Copilot 自身負責 |
-| 深度模式 Workflow | no-op（無 Workflow 能力） |
-| 失敗記憶自動 digest | no-op —— Copilot 會跑 hook 但**不交付注入輸出**；降級為 planning 時手動讀取 |
-| 壓縮保真（`SessionStart`·`compact`）hook | no-op —— 與 digest 同類：hook 會**載入**,但 Copilot 不送達 `SessionStart` 注入輸出;它 fail-open、絕不報錯。（在 Claude Code 上現在可運作 —— 0.27.3 由 `PreCompact` 搬遷而來,後者的注入輸出曾被 Claude Code 以驗證錯誤拒絕。）`output/udflow/progress.md` ledger 是連續性後備 |
-| `UDFLOW_ENFORCE_STOP` 阻擋 | no-op（Stop 輸出不送達） |
-| `destructive-guard` 確認 | **生效** —— PreToolUse 決策、非注入輸出（實機驗證：在 1.0.65 下擋下了 `git reset --hard`）。Windows 上 deny-list 也涵蓋模型會用的 PowerShell 形式 |
+- Claude Code 是主要 runtime。
+- GitHub Copilot CLI 會載入 skills、subagents、部分 PreToolUse decisions，但 injected `SessionStart` 與 `Stop` output 可能 no-op。
+- `destructive-guard.js` 已在 Copilot CLI 1.0.65 live-verified。
+- Claude Code hook/agent contracts 是 moving target；release smoke 記錄在 [`RELEASING.md`](RELEASING.md)。
 
-僅在 Copilot 停用：`~/.copilot/settings.json` 設 `{ "enabledPlugins": { "udflow@kktu": false } }`（或 `{ "disableAllHooks": true }`）。
+## 信任與發佈
 
----
+udflow 啟用後 hooks 會 auto-execute，所以 install integrity 很重要。
 
-## 專案狀態與貢獻
+建議安全安裝：
 
-- **早期／實驗性、單人維護**（bus factor = 1）—— 有在真實工作 dogfood,但依賴它做發佈把關前請斟酌。Issue 與 PR 皆歡迎;回應為盡力而為。
-- **最有價值的貢獻：一次 verified run。** udflow **無遙測**,真實 run 要寫下來才算數——udflow 在真實 run 結尾會印出可貼上的 `Live run` 區塊。**→ [開一個「Verified udflow run」issue](https://github.com/kktu6507/universal-dev-flow-plugin/issues/new?template=verified-run.yml)**（漏判與誤報也歡迎；先去敏感資訊）。見 [`CONTRIBUTING.md`](CONTRIBUTING.md) 與 [`EVIDENCE.md`](EVIDENCE.md)。
-- **摘掉「實驗性」的門檻：** ≥10 次 verified run、跨 ≥3 個專案、其中 ≥1 次非維護者所為。
+1. 從 tagged release 或 pinned commit 安裝。
+2. 啟用前先 review shipped plugin 的 `hooks/` 目錄（repo path：`udflow/hooks/`）。
+3. 安裝後跑 `/udflow:doctor`。
+4. signed tag 存在時，用 `git verify-tag vX.Y.Z` 驗證。
+5. release assets 有 SHA-256 checksum 時，優先使用並驗證。
 
----
+Trust model 請看 [`SECURITY.md`](SECURITY.md)（英文）；release checklist、live smoke、signed tag setup、checksum verification 請看 [`RELEASING.md`](RELEASING.md)（英文）。
+
+快速開始的 marketplace command 是便利路徑，會跟著 marketplace / repo state 走。Release checksum 只能做完整性比對：確認下載的 archive 符合 published release asset；來源真實性仍依賴 signed tag 或 pinned SHA。它不驗證預設 clone path；需要 pinning 時，請使用 tagged/SHA checkout，或把已驗證 archive 與安裝後的 `udflow/` tree 做比對。
+
+## 成本
+
+典型 real-app run 會比一次性 AI review 貴，因為 udflow 會 plan、verify、review，也可能 repair。數量級如下：
+
+| 任務等級 | 審查者 | 新增 tokens | 經過時間 |
+|---|---|---|---|
+| 輕量 | `--lite`，core only | ~0.5-2M | 幾分鐘 |
+| 典型 | 3-5 reviewers + one repair pass | ~2-7M | ~5-15 分鐘 |
+| 深入 | `--deep`，多輪 repair | >10M | ~20-40 分鐘 |
+
+需要省成本時用 `/udflow:run --lite`；需要最大審查深度時用 `--deep`；需要詳細 per-agent activity 與 cost 時用 `--report full`。
+
+## 文件
+
+- [`docs/task-writing-guide.md`](docs/task-writing-guide.md)（英文）- 如何寫出 udflow 能驗收的任務。
+- [`docs/how-to-read-verdicts.md`](docs/how-to-read-verdicts.md)（英文）- `READY` / `FIX REQUIRED` / `NOT READY` 的意義。
+- [`docs/compatibility.md`](docs/compatibility.md)（英文）- tested runtimes 與 conformance smoke checklist。
+- [`docs/advanced/external-capabilities.md`](docs/advanced/external-capabilities.md)（英文）- optional MCP、Codex、browser、design capabilities。
+- [`EVIDENCE.md`](EVIDENCE.md)（英文）- real-world 與 benchmark evidence log。
+- [`ARCHITECTURE.md`](ARCHITECTURE.md)（英文）- component map、stable contracts、limits。
+- [`SECURITY.md`](SECURITY.md)（英文）- trust model、安全安裝、vulnerability reporting。
+- [`RELEASING.md`](RELEASING.md)（英文）- release automation、live smoke、signed tags、checksums。
 
 ## 授權
 
-[MIT](LICENSE) · 版本歷史見 [CHANGELOG.md](CHANGELOG.md) · 架構與誠實限制見 [ARCHITECTURE.md](ARCHITECTURE.md) · 信任模型與回報見 [SECURITY.md](SECURITY.md)。
+[MIT](LICENSE)；版本紀錄見 [CHANGELOG.md](CHANGELOG.md)。

@@ -1,8 +1,11 @@
 # Releasing udflow
 
-Releases are **automatic**: pushing to `master` runs CI, and when the manifest version is new the
-`release` job tags it and publishes a GitHub release from the matching `CHANGELOG.md` section. You
-never tag by hand. This file is the **manual pre-release smoke** for the one thing CI cannot prove.
+Releases are **automatic**: pushing to `master` runs CI, and the `release` job tags and publishes a
+new manifest version from the matching `CHANGELOG.md` section. For an already-published version, the
+job verifies the deterministic archive/checksum assets and fails closed on drift unless
+`UDFLOW_REPAIR_PUBLISHED_RELEASE_ASSETS=true` is set as a repository variable for an intentional
+repair. You never tag by hand. This file is the **manual pre-release smoke** for the one thing CI
+cannot prove.
 
 ## What CI already gates (automatic, on every PR + push)
 
@@ -21,6 +24,38 @@ Claude Code session actually loads and fires the plugin after install — that n
 auth, which is why `claude plugin validate` is best-effort. Do the check below by hand before (or
 right after) a release that touches hooks, the skill, `hooks.json`, or the manifests.
 
+The release job also publishes a source archive of the shipped `udflow/` plugin tree and a SHA-256 file.
+Verify it with the command that matches your platform:
+
+Linux / GNU coreutils:
+```bash
+sha256sum -c udflow-vX.Y.Z-plugin.tar.gz.sha256
+```
+
+macOS:
+```bash
+shasum -a 256 -c udflow-vX.Y.Z-plugin.tar.gz.sha256
+```
+
+Windows PowerShell:
+```powershell
+$checksum = Get-Content .\udflow-vX.Y.Z-plugin.tar.gz.sha256
+$parts = $checksum -split '\s+', 2
+if ($parts.Count -ne 2 -or $parts[1].TrimStart('*') -ne 'udflow-vX.Y.Z-plugin.tar.gz') { throw "Checksum filename mismatch" }
+$expected = $parts[0].ToUpperInvariant()
+$actual = (Get-FileHash .\udflow-vX.Y.Z-plugin.tar.gz -Algorithm SHA256).Hash
+if ($actual -ne $expected) { throw "Checksum mismatch" }
+```
+
+The checksum proves the downloaded archive matches the release asset. It does not replace auditing the
+hook source or verifying a signed tag when available.
+
+Published release assets are immutable by default: the release job verifies existing archive/checksum
+bytes against the deterministic tag-bound rebuild. It only replaces already-published assets when the
+repository variable `UDFLOW_REPAIR_PUBLISHED_RELEASE_ASSETS=true` is set for an intentional repair.
+After a repair run succeeds, unset that repository variable before the next normal push so future runs
+return to fail-closed verification.
+
 ## Manual activation smoke (clean profile)
 
 In a throwaway/clean Claude Code profile, from a scratch project directory:
@@ -35,9 +70,12 @@ In a throwaway/clean Claude Code profile, from a scratch project directory:
    labeled untrusted) is injected. With no file, nothing should appear.
 3. **PreToolUse plan gate** — enter plan mode and ask Claude to edit a file; the write must be
    **denied** with the plan-gate reason. Outside plan mode the same edit is allowed.
-4. **Stop / orchestration-check** — end a session that asserts a `READY` verdict without running the
+4. **PreToolUse destructive guard** — outside plan mode, ask for a narrow unrecoverable command such
+   as `git reset --hard` in a disposable project and confirm `destructive-guard.js` asks before it.
+   Confirm a benign command is allowed.
+5. **Stop / orchestration-check** — end a session that asserts a `READY` verdict without running the
    panel; confirm the advisory `systemMessage` appears (and that an honest run stays silent).
-5. **Compaction fidelity (SessionStart·`compact`)** — with `udflow` enabled, trigger a compaction
+6. **Compaction fidelity (SessionStart·`compact`)** — with `udflow` enabled, trigger a compaction
    (`/compact`, or let auto-compaction fire on a long session). Confirm **both**: (a) `/compact` prints
    **no** `Hook JSON output validation failed` error — the hook emits the `SessionStart` shape Claude Code
    accepts, NOT a `PreCompact` `hookSpecificOutput` (which CC rejects); and (b) the preservation reminder
@@ -49,11 +87,60 @@ In a throwaway/clean Claude Code profile, from a scratch project directory:
    `.claude/settings.json`, nothing should appear. (Regression context: the hook was wired under
    `PreCompact` through 0.27.2, whose injected output Claude Code rejects with a validation error and never
    surfaces; 0.27.3 relocated the emit to the supported SessionStart·`compact` path.)
-6. **Skill activation** — describe a non-trivial engineering task in plain language and confirm the
+7. **Skill activation** — describe a non-trivial engineering task in plain language and confirm the
    `universal-dev-flow` skill engages (or `/udflow:run <task>` invokes it manually).
 
 If any step fails, do **not** rely on the release for that surface — fix and re-run. Note the result
 in the PR or the `EVIDENCE.md` log so the activation path has a paper trail.
+
+## Safe install and integrity checks
+
+Recommended user-side checks:
+
+1. Install from a tagged release or pinned commit.
+2. Review the shipped plugin's `hooks/` directory before enabling (repo path: `udflow/hooks/`);
+   these are the auto-executing scripts.
+3. Run `/udflow:doctor` after install.
+4. Verify signed tags when available:
+
+   ```bash
+   git verify-tag vX.Y.Z
+   ```
+
+5. Verify release archive checksums when assets are present.
+
+   Linux / GNU coreutils:
+
+   ```bash
+   sha256sum -c udflow-vX.Y.Z-plugin.tar.gz.sha256
+   ```
+
+   macOS:
+
+   ```bash
+   shasum -a 256 -c udflow-vX.Y.Z-plugin.tar.gz.sha256
+   ```
+
+Windows PowerShell:
+
+```powershell
+$checksum = Get-Content .\udflow-vX.Y.Z-plugin.tar.gz.sha256
+$parts = $checksum -split '\s+', 2
+if ($parts.Count -ne 2 -or $parts[1].TrimStart('*') -ne 'udflow-vX.Y.Z-plugin.tar.gz') { throw "Checksum filename mismatch" }
+$expected = $parts[0].ToUpperInvariant()
+$actual = (Get-FileHash .\udflow-vX.Y.Z-plugin.tar.gz -Algorithm SHA256).Hash
+if ($actual -ne $expected) { throw "Checksum mismatch" }
+```
+
+The archive is generated from the `udflow/` subtree, which is the shipped plugin content. Repo-root
+docs, tests, and CI files are not part of that archive. When extracted, the archive root is
+`udflow-vX.Y.Z/`, so the hook scripts appear under `udflow-vX.Y.Z/hooks/`.
+
+The quick-start marketplace command is convenient but may follow the marketplace/repo state. The
+checksum file verifies that the downloaded archive matches the published release asset; authenticity
+still depends on a signed tag or pinned SHA. It does not authenticate a moving marketplace clone. For
+stronger pinning, use a tagged/SHA checkout if your runtime supports it, or compare the verified
+archive's `udflow-vX.Y.Z/` tree against the installed `udflow/` plugin tree before enabling.
 
 ## Contract conformance (Claude Code)
 
