@@ -3,6 +3,15 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.30.0] - 2026-06-30
+
+### Added
+- **Data-driven consolidation feedback loop.** `scripts/failure-retrieve.mjs` gains opt-in `--log`: each entry it surfaces for a real task signature is appended to a sibling **append-only** ledger (`.failure-memory-usage.jsonl`, next to the memory file — never inside it, so the single-writer `FAILURE_MEMORY.md` invariant holds). New `scripts/failure-consolidate.mjs` aggregates that ledger into a deterministic prune **advisory** for the gatekeeper: retired entries (delete) and stale expire candidates (dated, old enough, never matched in the window). Honest by construction — an empty ledger or insufficient history makes **no** staleness claim, and undated/too-new entries are never flagged. Advisory only; the gatekeeper (single writer) makes the edits.
+- 12 new tests (`test/failure-consolidate.test.mjs`) including a retrieve-`--log` → consolidate round-trip that asserts the memory file is never modified.
+
+### Notes
+- A bare `failure-retrieve.mjs` stays pure-read (no ledger) — recording is explicit opt-in. Shipped tree changed (new `failure-consolidate.mjs`, `--log` on `failure-retrieve.mjs`) → bump 0.29.0 → 0.30.0 across `plugin.json`, `package.json`, and `marketplace.json` (metadata + plugin entry). No verdict/severity/sentinel literal changed. `node --test` + `validate-structure` green.
+
 ## [0.29.0] - 2026-06-30
 
 ### Added

@@ -153,7 +153,7 @@ function readCapped(file) {
 
 // Default source: project `ai/FAILURE_MEMORY.md` (anchored on CLAUDE_PROJECT_DIR, like the hook), else
 // the global `~/.claude/FAILURE_MEMORY.md`. Returns null when neither is a readable regular file.
-function resolveMemoryFile(cwd) {
+export function resolveMemoryFile(cwd) {
   const candidates = [
     path.join(cwd, "ai", "FAILURE_MEMORY.md"),
     path.join(os.homedir(), ".claude", "FAILURE_MEMORY.md"),
@@ -162,6 +162,35 @@ function resolveMemoryFile(cwd) {
     try { if (fs.statSync(f).isFile()) return f; } catch (e) {}
   }
   return null;
+}
+
+// The append-only usage ledger sits NEXT TO the memory file it tracks (a sibling dotfile), never inside
+// it — recording a retrieval hit must not touch the single-writer FAILURE_MEMORY.md. It is local runtime
+// telemetry (gitignore it; safe to delete — counts simply reset). `failure-consolidate.mjs` aggregates it.
+export function defaultLedgerPath(memoryFile) {
+  return path.join(path.dirname(memoryFile), ".failure-memory-usage.jsonl");
+}
+
+// One ledger line per surfaced entry: the entry key (title), the firing timestamp, a truncated query, and
+// an optional session id. Lines are short (well under the atomic-append boundary) so concurrent planning
+// retrievals can append without interleaving. A "hit" means the entry was RELEVANT to a real task
+// signature — not that the model obeyed it; that is the deterministic prune signal consolidation reads.
+export function buildLedgerLines(matches, meta = {}) {
+  const ts = Number.isFinite(meta.now) ? meta.now : 0;
+  const q = String(meta.query || "").replace(/\s+/g, " ").trim().slice(0, 200);
+  const sid = meta.session ? String(meta.session).slice(0, 64) : undefined;
+  return (matches || []).map((m) => {
+    const rec = { ts, key: String(m.entry.title).slice(0, 300), q };
+    if (sid) rec.sid = sid;
+    return JSON.stringify(rec);
+  });
+}
+
+// Best-effort, fail-open append. A logging failure (read-only fs, ENOSPC, a bad path) must never break the
+// retrieval it is recording, so every error is swallowed — the ledger is advisory telemetry, not a gate.
+function appendLedger(file, lines) {
+  if (!file || !lines || lines.length === 0) return;
+  try { fs.appendFileSync(file, lines.join("\n") + "\n"); } catch (e) {}
 }
 
 function main(argv) {
@@ -183,7 +212,15 @@ function main(argv) {
   const file = get("--file", "") || resolveMemoryFile(cwd);
   const markdown = file ? readCapped(file) : "";
   const matches = retrieve(markdown, query, { top });
+  // Print the ranked entries first; the result is the deliverable and must not depend on logging.
   process.stdout.write(formatRetrieval(matches, { file: file || "none" }) + "\n");
+  // Opt-in usage recording (--log): append one hit per surfaced entry to the sibling ledger so
+  // consolidation can later prune never-matched entries. Off by default (a bare retrieval is pure-read);
+  // best-effort and fail-open. The memory file itself is never written here (single-writer invariant).
+  if (args.includes("--log") && file && matches.length) {
+    const ledger = get("--log-file", "") || defaultLedgerPath(file);
+    appendLedger(ledger, buildLedgerLines(matches, { query, session: get("--session", ""), now: Date.now() }));
+  }
   process.exit(0);
 }
 

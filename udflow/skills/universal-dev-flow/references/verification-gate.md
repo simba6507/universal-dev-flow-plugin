@@ -141,6 +141,12 @@ Control file size by **entry count, not by truncation**. Hook truncation is only
 
 Consolidate as part of the write step when you notice overlap; do not let the file grow unbounded and rely on the digest cap to hide it. The SessionStart digest **skips any entry whose title ends with an `(expired)` or `(superseded …)` marker** (`hooks/load-failure-memory.js`), so a retired lesson stops being injected even before the next write deletes it — put the marker at the **end of the `###` title line** (a mid-title mention like "do not log (expired) creds" is deliberately not treated as retired) so the digest can see it.
 
+To make consolidation **data-driven instead of by-feel**, the retrieval helper records usage and a second helper aggregates it:
+
+- During planning, run `scripts/failure-retrieve.mjs` with **`--log`** so each entry it surfaces for a real task signature is appended to a sibling **append-only** ledger (`.failure-memory-usage.jsonl`, next to the memory file — **never** inside it; recording a hit must not touch the single-writer `FAILURE_MEMORY.md`). A "hit" means the entry was *relevant to real work*.
+- At the consolidation step, run `scripts/failure-consolidate.mjs` for a deterministic prune advisory: it lists **retired** entries (delete on the next write) and **expire candidates** — dated entries old enough and never matched within the window. It is honest by construction: an empty ledger or insufficient history makes **no** staleness claim (it never says "expire everything" from missing data), and undated or too-new entries are never flagged.
+- The advisory is **evidence, not an action**: the gatekeeper (the single writer) decides what to actually merge/retire/delete and makes the edits. The ledger is local runtime telemetry — gitignore it; deleting it just resets the counts.
+
 ## Failure Memory Entry Template
 
 Use the target file's existing template when it defines one. If the target `FAILURE_MEMORY.md` is new or has no template yet, seed it with the structure below and use this format for the first entry, so later entries stay consistent:
