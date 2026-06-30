@@ -62,6 +62,7 @@ Non-trivial work must pass an explicit plan gate before implementation begins. T
 3. Present the plan for approval using **ExitPlanMode**. Only proceed to implementation after the user approves.
 4. When a decision has discrete options (e.g. competing designs, ambiguous business behavior, destructive vs. non-destructive paths), surface them with **AskUserQuestion** rather than guessing. On high-risk work, the plan-grounding step (`references/plan-grounding.md`) enumerates these options and the change's implied edge inputs so your approval is informed.
 5. Do not spawn `implementer` until the plan is approved and plan mode is exited.
+6. On the high-risk plan-grounding path, run the **contract-readiness check** (`references/plan-grounding.md`, Stage B): if the contract lacks an observable AC, a must-not-change scope, or a per-criterion verification path, disclose `not contract-ready` and the missing piece at the gate before approval. It is a soft disclosure (the user may still approve), risk-proportional (high-risk only), and never blocks low/medium work.
 
 ## Core Rules
 
