@@ -107,6 +107,43 @@ test("MAX_ENTRIES: 22 entries -> 20 kept and omitted count is the real remainder
   assert.ok(/\(2 older entries omitted/.test(ctx), "omitted count = 22 - 20");
 });
 
+test("digest ranks a recurring older entry above a newer one-off (importance, not raw recency)", () => {
+  // The newer entry has no recurrence; the older one was 'seen again' twice. Recurrence dominates the
+  // rank, so the recurring lesson leads the always-on index even though it is older.
+  const mem = `# FM
+
+### 2026-06-25 — newer one-off glitch
+- **Prevention rule**: r.
+- **Recurrence**: first occurrence.
+
+### 2026-06-01 — recurring path bug
+- **Prevention rule**: r.
+- **Recurrence**: seen again 2026-06-10. seen again 2026-06-18.
+`;
+  const ctx = digestOf({ cwd: mkProject(mem) });
+  const recurringAt = ctx.indexOf("recurring path bug");
+  const newerAt = ctx.indexOf("newer one-off glitch");
+  assert.ok(recurringAt >= 0 && newerAt >= 0, "both entries present");
+  assert.ok(recurringAt < newerAt, "the recurring entry must rank above the newer one-off");
+});
+
+test("digest with no recurrence falls back to newest-first ordering", () => {
+  const mem = `# FM
+
+### 2026-06-20 — newest
+- **Prevention rule**: r.
+
+### 2026-06-10 — middle
+- **Prevention rule**: r.
+
+### 2026-06-01 — oldest
+- **Prevention rule**: r.
+`;
+  const ctx = digestOf({ cwd: mkProject(mem) });
+  assert.ok(ctx.indexOf("newest") < ctx.indexOf("middle"), "newest before middle");
+  assert.ok(ctx.indexOf("middle") < ctx.indexOf("oldest"), "middle before oldest");
+});
+
 test("placeholder-only file injects nothing", () => {
   const ctx = digestOf({ cwd: mkProject("# FM\n\n### <YYYY-MM-DD> — <short title>\n- **Prevention rule**: x.\n") });
   assert.strictEqual(ctx, "");

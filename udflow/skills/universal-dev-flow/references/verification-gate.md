@@ -88,12 +88,20 @@ Do not perform broad encoding conversion unless the root cause and interoperabil
 
 ## Failure Memory
 
-Read before non-trivial implementation. The SessionStart hook injects only a condensed **digest** (entry titles + tags, newest first; the prevention-rule text is read on demand, not injected) as an index — do not treat it as the full record:
+Read before non-trivial implementation. The SessionStart hook injects only a condensed **digest** (entry titles + tags, **ranked by importance — recurrence first, then recency** — so the always-on index leads with the lessons that keep biting, not merely the newest; the prevention-rule text is read on demand, not injected) as an index — do not treat it as the full record:
 
 1. `ai/FAILURE_MEMORY.md` when it exists.
 2. `~/.claude/FAILURE_MEMORY.md` otherwise, including consolidated groups.
 
 During planning, perform **targeted retrieval**: search the failure-memory file for entries relevant to this task's affected files, area, language, and error type (use the entry `Tags` to filter), then read those full entries. Do not rely on the startup digest alone.
+
+To make this retrieval **deterministic instead of a best-effort grep**, run the dependency-free helper `scripts/failure-retrieve.mjs` with the task's signature — affected paths, language, area, and error-type tokens — and read the full entries it ranks back:
+
+```
+node skills/universal-dev-flow/scripts/failure-retrieve.mjs --query "src/auth/login.ts node jsdom ci-test" [--file <path>] [--top 5]
+```
+
+It parses the same `### ` entries, scores each by tag/title/body overlap with the signature (a tag hit outweighs a title hit outweighs a body hit), drops retired (`expired`/`superseded`) and placeholder entries, and returns the top matches' verbatim markdown. Fail-open: an absent/unstructured file or no sufficiently-relevant match yields a no-claim line and exit 0 — it is a ranking aid, **not** a gate, and never replaces reading the file when judgment calls for it. The retrieval recall/precision is regression-guarded by the committed `eval/failure-memory/` oracle (`test/failure-retrieve.test.mjs`).
 
 **Single writer:** the failure-memory file is shared mutable state and reviewers run in parallel, so only one actor writes it — the main thread / `gatekeeper` after the verdict. Reviewers and the implementer only *propose* entries; they do not write the file. This avoids lost-update / interleaved-write corruption (the "reread global first" step below is a lockless read-modify-write and is only safe with a single writer).
 
@@ -132,6 +140,12 @@ Control file size by **entry count, not by truncation**. Hook truncation is only
 - Keep newest first and keep each surviving entry's prevention rule and tags intact.
 
 Consolidate as part of the write step when you notice overlap; do not let the file grow unbounded and rely on the digest cap to hide it. The SessionStart digest **skips any entry whose title ends with an `(expired)` or `(superseded …)` marker** (`hooks/load-failure-memory.js`), so a retired lesson stops being injected even before the next write deletes it — put the marker at the **end of the `###` title line** (a mid-title mention like "do not log (expired) creds" is deliberately not treated as retired) so the digest can see it.
+
+To make consolidation **data-driven instead of by-feel**, the retrieval helper records usage and a second helper aggregates it:
+
+- During planning, run `scripts/failure-retrieve.mjs` with **`--log`** so each entry it surfaces for a real task signature is appended to a sibling **append-only** ledger (`.failure-memory-usage.jsonl`, next to the memory file — **never** inside it; recording a hit must not touch the single-writer `FAILURE_MEMORY.md`). A "hit" means the entry was *relevant to real work*.
+- At the consolidation step, run `scripts/failure-consolidate.mjs` for a deterministic prune advisory: it lists **retired** entries (delete on the next write) and **expire candidates** — dated entries old enough and never matched within the window. It is honest by construction: an empty ledger or insufficient history makes **no** staleness claim (it never says "expire everything" from missing data), and undated or too-new entries are never flagged.
+- The advisory is **evidence, not an action**: the gatekeeper (the single writer) decides what to actually merge/retire/delete and makes the edits. The ledger is local runtime telemetry — gitignore it; deleting it just resets the counts.
 
 ## Failure Memory Entry Template
 

@@ -3,6 +3,27 @@
 All notable changes to this plugin are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.30.0] - 2026-06-30
+
+### Added
+- **Data-driven consolidation feedback loop.** `scripts/failure-retrieve.mjs` gains opt-in `--log`: each entry it surfaces for a real task signature is appended to a sibling **append-only** ledger (`.failure-memory-usage.jsonl`, next to the memory file — never inside it, so the single-writer `FAILURE_MEMORY.md` invariant holds). New `scripts/failure-consolidate.mjs` aggregates that ledger into a deterministic prune **advisory** for the gatekeeper: retired entries (delete) and stale expire candidates (dated, old enough, never matched in the window). Honest by construction — an empty ledger or insufficient history makes **no** staleness claim, and undated/too-new entries are never flagged. Advisory only; the gatekeeper (single writer) makes the edits.
+- 12 new tests (`test/failure-consolidate.test.mjs`) including a retrieve-`--log` → consolidate round-trip that asserts the memory file is never modified.
+
+### Notes
+- A bare `failure-retrieve.mjs` stays pure-read (no ledger) — recording is explicit opt-in. Shipped tree changed (new `failure-consolidate.mjs`, `--log` on `failure-retrieve.mjs`) → bump 0.29.0 → 0.30.0 across `plugin.json`, `package.json`, and `marketplace.json` (metadata + plugin entry). No verdict/severity/sentinel literal changed. `node --test` + `validate-structure` green.
+
+## [0.29.0] - 2026-06-30
+
+### Added
+- **Deterministic failure-memory retrieval** (`scripts/failure-retrieve.mjs`): a dependency-free, fail-open session helper that takes a task signature (affected paths / language / area / error-type) and returns the relevance-ranked full `FAILURE_MEMORY.md` entries — replacing best-effort grep with a deterministic rank (tag hit > title hit > body hit; a relevance floor drops single incidental-word noise; retired/placeholder entries excluded). Wired as a planning-step ranking aid (not a gate) in `SKILL.md` + `references/verification-gate.md`.
+- **Retrieval evidence oracle** (`eval/failure-memory/` + `test/failure-retrieve.test.mjs`): a committed, model-free recall+precision eval — each seeded lesson has a task signature that must rank it #1, and unrelated/retired lessons must not surface — closing the "no evidence the mechanism surfaces the right lesson" gap, runnable in CI via `npm test`.
+
+### Changed
+- **SessionStart digest now ranks by importance, not raw recency** (`hooks/load-failure-memory.js`): entries are ordered by recurrence first (a lesson seen again keeps biting), then recency, so the always-on index leads with what matters. Equal-score entries keep the prior newest-first order, so existing behavior is unchanged where no recurrence/date signal exists.
+
+### Notes
+- Shipped tree changed (`load-failure-memory.js`, new `scripts/failure-retrieve.mjs`) → bump 0.28.0 → 0.29.0 across `plugin.json`, `package.json`, and `marketplace.json` (metadata + plugin entry). No verdict/severity/sentinel literal changed. `node --test` (incl. 12 new retrieval/ranking tests) + `validate-structure` green.
+
 ## [0.28.0] - 2026-06-30
 
 ### Added
