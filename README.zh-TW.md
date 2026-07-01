@@ -2,7 +2,7 @@
 
 [![Validate](https://github.com/kktu6507/universal-dev-flow-plugin/actions/workflows/validate.yml/badge.svg)](https://github.com/kktu6507/universal-dev-flow-plugin/actions/workflows/validate.yml)
 
-[English](README.md) · **繁體中文**
+[English](README.md) · **繁體中文** · [日本語](README.ja.md)
 
 **udflow 讓 Claude Code 像謹慎的 release engineer 一樣工作：** 先規劃、經你核准後才改 code、用證據驗證，最後給出 `READY` / `FIX REQUIRED` / `NOT READY`。
 

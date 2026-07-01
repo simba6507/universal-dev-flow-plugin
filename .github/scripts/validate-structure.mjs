@@ -410,20 +410,18 @@ function scanTextIntegrity(dir) {
 }
 scanTextIntegrity(".");
 
-// 8. bilingual README parity: README.zh-TW.md must name every wired hook (like README.md), and the two
-// READMEs must have the same number of top-level (## ) sections — a structural-drift guard that does
-// not compare translated prose.
-const enReadme = path.join(root, "README.md"), zhReadme = path.join(root, "README.zh-TW.md");
-if (fs.existsSync(enReadme) && !fs.existsSync(zhReadme)) {
-  fail(`README parity: README.md exists but README.zh-TW.md is missing (the bilingual pair must not drift by deletion)`);
-} else if (fs.existsSync(enReadme) && fs.existsSync(zhReadme)) {
-  const en = fs.readFileSync(enReadme, "utf8"), zh = fs.readFileSync(zhReadme, "utf8");
+// 8. multilingual README parity: every translated README must name every wired hook (like README.md)
+// and have the same number of top-level (## ) sections — a structural-drift guard that does not
+// compare translated prose. Covers every translation in TRANSLATED_READMES, not just one language,
+// so adding a new translation can't silently skip the guard the original bilingual pair had.
+const enReadme = path.join(root, "README.md");
+const TRANSLATED_READMES = ["README.zh-TW.md", "README.ja.md"];
+if (fs.existsSync(enReadme)) {
+  const en = fs.readFileSync(enReadme, "utf8");
   // Count top-level (## ) sections, ignoring any inside fenced code blocks so the structural guard is
   // not tripped by a Markdown/shell sample that happens to contain a "## " line.
   const sectionCount = (s) => (s.replace(/```[\s\S]*?```/g, "").match(/^##\s+/gm) || []).length;
-  if (sectionCount(en) !== sectionCount(zh)) {
-    fail(`README parity: README.md has ${sectionCount(en)} top-level (##) sections but README.zh-TW.md has ${sectionCount(zh)}`);
-  }
+  const enSections = sectionCount(en);
   const requiredReadmeLinks = [
     "docs/task-writing-guide.md",
     "docs/how-to-read-verdicts.md",
@@ -441,13 +439,26 @@ if (fs.existsSync(enReadme) && !fs.existsSync(zhReadme)) {
   ];
   for (const link of requiredReadmeLinks) {
     if (!en.includes(link)) fail(`README parity: README.md missing required entry link "${link}"`);
-    if (!zh.includes(link)) fail(`README parity: README.zh-TW.md missing required entry link "${link}"`);
   }
   const hjPath = path.join(root, `${PLUGIN}/hooks/hooks.json`);
-  if (fs.existsSync(hjPath)) {
-    for (const m of new Set((fs.readFileSync(hjPath, "utf8").match(/hooks\/[a-z0-9-]+\.js/gi) || []))) {
-      const base = m.replace(/^hooks\//, "").replace(/\.js$/, "");
-      if (!zh.includes(base)) fail(`README parity: README.zh-TW.md does not mention the hook "${base}" (docs out of sync)`);
+  const wiredHookBases = fs.existsSync(hjPath)
+    ? [...new Set((fs.readFileSync(hjPath, "utf8").match(/hooks\/[a-z0-9-]+\.js/gi) || []))].map((m) => m.replace(/^hooks\//, "").replace(/\.js$/, ""))
+    : [];
+  for (const rel of TRANSLATED_READMES) {
+    const full = path.join(root, rel);
+    if (!fs.existsSync(full)) {
+      fail(`README parity: README.md exists but ${rel} is missing (a translated README must not drift by deletion)`);
+      continue;
+    }
+    const translated = fs.readFileSync(full, "utf8");
+    if (sectionCount(translated) !== enSections) {
+      fail(`README parity: README.md has ${enSections} top-level (##) sections but ${rel} has ${sectionCount(translated)}`);
+    }
+    for (const link of requiredReadmeLinks) {
+      if (!translated.includes(link)) fail(`README parity: ${rel} missing required entry link "${link}"`);
+    }
+    for (const base of wiredHookBases) {
+      if (!translated.includes(base)) fail(`README parity: ${rel} does not mention the hook "${base}" (docs out of sync)`);
     }
   }
 }

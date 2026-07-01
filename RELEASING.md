@@ -14,7 +14,7 @@ cannot prove.
   lifecycle hook registered under the right event with a matcher that covers the tools/lifecycles it
   must fire for); **CC output-contract conformance** (`5g`: a hook that emits `hookSpecificOutput` is
   wired only to events Claude Code actually accepts it on — the compact-fidelity/PreCompact bug class);
-  distribution hygiene; text integrity; bilingual README parity.
+  distribution hygiene; text integrity; multilingual README parity (EN / zh-TW / ja).
 - `node --check` on all five hooks; `node --test` (behavioral hook tests).
 - `claude plugin validate` — **best-effort, non-blocking** (Linux-only; the Claude Code CLI may not
   run fully headless in CI).

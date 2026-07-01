@@ -83,7 +83,7 @@ Data migration:
 Documentation / workflow:
 
 ```text
-/udflow:run Rework the README introduction so a new visitor understands the product in 30 seconds. Keep install commands unchanged, preserve all hook names, and verify bilingual README parity plus text integrity.
+/udflow:run Rework the README introduction so a new visitor understands the product in 30 seconds. Keep install commands unchanged, preserve all hook names, and verify multilingual README parity plus text integrity.
 ```
 
 ## What reviewers need

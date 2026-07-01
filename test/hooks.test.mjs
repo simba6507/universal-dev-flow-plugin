@@ -976,7 +976,7 @@ test("orchestration-check: delivery=shipped sentinel is authoritative — warns 
 });
 
 // --- validate-structure CI guards: negative-path coverage (v0.10.2) ---
-// The text-integrity (U+FFFD) and bilingual-README-parity checks are fail-only guards; lock in that they
+// The text-integrity (U+FFFD) and multilingual-README-parity checks are fail-only guards; lock in that they
 // actually FAIL on a violation (not merely pass on the clean tree) by running the real validator against a
 // temp copy of the repo with one injected defect. A future edit that silently disables a guard breaks these.
 
@@ -1052,6 +1052,38 @@ test("validate-structure: README parity FAILS when either README drops a require
     const { code, out } = runValidator(tree);
     assert.notStrictEqual(code, 0, "README entry links must stay present in both languages");
     assert.match(out, /missing required entry link/, "the failure must name the missing README link");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: README parity FAILS when the ja README omits a wired hook name", () => {
+  const tree = copyRepoTree();
+  try {
+    const jaPath = path.join(tree, "README.ja.md");
+    fs.writeFileSync(jaPath, fs.readFileSync(jaPath, "utf8").split("plan-gate").join("PLANGATE_removed"), "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "ja omitting a wired hook name must fail the build");
+    assert.match(out, /plan-gate/, "the failure must name the missing hook");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: README parity FAILS when the ja README drops a required entry link", () => {
+  const tree = copyRepoTree();
+  try {
+    const jaPath = path.join(tree, "README.ja.md");
+    fs.writeFileSync(jaPath, fs.readFileSync(jaPath, "utf8").replace("template=verified-run.yml", "template=removed.yml"), "utf8");
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "README entry links must stay present in every language");
+    assert.match(out, /missing required entry link/, "the failure must name the missing README link");
+  } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+});
+
+test("validate-structure: README parity FAILS when a translated README is deleted", () => {
+  const tree = copyRepoTree();
+  try {
+    fs.rmSync(path.join(tree, "README.ja.md"));
+    const { code, out } = runValidator(tree);
+    assert.notStrictEqual(code, 0, "deleting a translated README must fail the build");
+    assert.match(out, /README\.ja\.md is missing/, "the failure must name the missing translated README");
   } finally { fs.rmSync(tree, { recursive: true, force: true }); }
 });
 
